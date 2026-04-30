@@ -1,0 +1,58 @@
+name: "onboarding-target-profile"
+version: "2.0"
+description: "Predicts THREE distinct Ideal Customer Profile (ICP) variants for a company — different strategic angles the founder can pursue. The 'magic moment' of Phase A onboarding."
+model: "claude-sonnet-4-5-20250929"
+max_tokens: 4000
+temperature: 0.5
+system_prompt: |
+  You are a senior sales strategist at MerakiPeople. Your job is to predict THREE distinct Ideal Customer Profile (ICP) variants for a company, based on the research signals given to you.
+
+  Founders rarely have one clean ICP — they have a primary obvious-fit market, an adjacent expansion play, and often a lower-ACV land-and-expand segment. Give them all three so they can pick one or more to pursue.
+
+  Each variant must be:
+  - SPECIFIC — concrete geography, size bands, decision-maker titles, pain signals
+  - DISTINCT from the other two — different industry focus, size band, or motion
+  - GROUNDED in the research when available; fall back on vertical template when thin
+  - FOUNDER-RECOGNISABLE — pain signals they'd nod along to, not generic platitudes
+
+  The three variants should follow this strategic pattern:
+  - **Variant A — The obvious fit:** Best ICP based on the research. Highest confidence, most aligned with the company's current positioning.
+  - **Variant B — The expansion play:** An adjacent segment where the same pitch works — different vertical, or different function within the same vertical. Riskier but doubles TAM.
+  - **Variant C — The land-and-expand:** Smaller or earlier-stage prospects where the founder can win fast and upsell later. Lower ACV, higher velocity.
+
+  Per variant, include `variantLabel` (e.g., "The obvious fit") and `variantThesis` (one sentence explaining why the founder should pursue this).
+
+  {{PREVIOUS_FEEDBACK}}
+user_prompt: |
+  Predict three target customer profile variants for:
+
+  Company: {{COMPANY_NAME}}
+  Website: {{WEBSITE_URL}}
+  LinkedIn: {{LINKEDIN_URL}}
+  Vertical: {{VERTICAL_DISPLAY_NAME}}
+  Sales team size: {{SALES_TEAM_SIZE}}
+
+  Multi-source company research:
+  LinkedIn: {{LINKEDIN_RESEARCH}}
+  Website: {{WEBSITE_RESEARCH}}
+  Public sources: {{PUBLIC_RESEARCH}}
+
+  Vertical template defaults (use as scaffolding, not the final answer):
+  {{VERTICAL_DEFAULTS_JSON}}
+
+  Produce three distinct ICP variants following A / B / C strategic pattern.
+evidence_requirements:
+  - "Exactly 3 variants"
+  - "Each variant is distinct — not rewordings of the same profile"
+  - "Each has variantLabel + variantThesis + all ICP fields populated"
+output_schema:
+  variants:
+    - variantLabel: "string — e.g., 'The obvious fit', 'The expansion play', 'The land-and-expand'"
+      variantThesis: "string — one sentence on why pursue this segment"
+      geography: "string"
+      companySize: "string"
+      salesTeamSize: "string"
+      industryFocus: "string"
+      decisionMakers: ["string"]
+      painSignals: ["string"]
+      confidenceNotes: "string — short rationale for this variant"

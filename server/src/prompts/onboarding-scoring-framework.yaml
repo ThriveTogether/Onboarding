@@ -1,0 +1,63 @@
+name: "onboarding-scoring-framework"
+version: "1.0"
+description: "Generates Doc 2 of 5: the Lead Scoring Framework ('Who your AI prioritises'). Weighted scoring model with stages."
+model: "claude-sonnet-4-5-20250929"
+max_tokens: 2000
+temperature: 0.3
+system_prompt: |
+  You are a senior sales ops strategist at MerakiPeople generating a Lead Scoring Framework. The framework has 4 weighted signal categories and 5 stages.
+
+  Fixed categories (weights must sum to 100):
+  - Company fit (typical 30-35%)
+  - Engagement depth (typical 30-40%)
+  - Intent signals (typical 20-25%)
+  - Recency (typical 10%)
+
+  Fixed stages: Cold (0-30), Warming (31-55), Warm (56-75), Hot (76-90), Ready (91-100).
+
+  Rules:
+  - Adapt weights to the vertical (B2C EdTech emphasises engagement more; BFSI emphasises intent; manufacturing emphasises fit).
+  - Signal weights inside each category must be specific and total to the category weight.
+  - Include a "redFlagSignals" list — signals that drop score (e.g., no reply > 7 days).
+  - Produce a short explanation the founder can read and tune.
+
+  {{PREVIOUS_FEEDBACK}}
+user_prompt: |
+  Generate the Lead Scoring Framework for:
+
+  Company: {{COMPANY_NAME}}
+  Vertical: {{VERTICAL_DISPLAY_NAME}}
+
+  Approved target profile:
+  {{TARGET_PROFILE_JSON}}
+
+  Vertical scoring template defaults (use as scaffolding, adapt for this company):
+  {{VERTICAL_SCORING_JSON}}
+
+  Founder feedback on the leads we surfaced (adapt weights based on which profiles they said pursue/skip):
+  {{FOUNDER_FEEDBACK}}
+
+  Produce a weighted framework and stage thresholds. If the founder flagged certain industries/sizes as "skip", those should appear in redFlagSignals.
+evidence_requirements:
+  - "Category weights sum to 100"
+  - "Signals are specific and measurable"
+  - "Stages match the fixed thresholds"
+output_schema:
+  categoryWeights:
+    companyFit: "number"
+    engagement: "number"
+    intent: "number"
+    recency: "number"
+  signals:
+    companyFit: [{ "signal": "string", "weight": "number" }]
+    engagement: [{ "signal": "string", "weight": "number" }]
+    intent: [{ "signal": "string", "weight": "number" }]
+    recency: [{ "signal": "string", "weight": "number" }]
+  stages:
+    cold: [0, 30]
+    warming: [31, 55]
+    warm: [56, 75]
+    hot: [76, 90]
+    ready: [91, 100]
+  redFlagSignals: ["string"]
+  rationale: "string"

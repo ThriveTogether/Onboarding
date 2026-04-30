@@ -1,0 +1,44 @@
+import React from 'react';
+import Logo from './Logo';
+
+interface Props {
+  variant?: 'fixed' | 'inline';
+  align?: 'left' | 'center';
+  /**
+   * Hide on the AppShell pages — the sidebar there already shows the logo,
+   * adding a fixed pill on top would double up.
+   */
+  hideOnSidebarPages?: boolean;
+}
+
+/**
+ * Persistent brand identity shown across every screen:
+ *   "Career247 Growth OS"  ·  powered by MerakiPeople
+ *
+ * The product is "Career247 Growth OS" (the founder-facing name); the engine
+ * is MerakiPeople (the parent platform). Defaults to a fixed top-left pill;
+ * pass `variant="inline"` to drop it into a flow (e.g. footer of the auth
+ * cards).
+ */
+export default function BrandTag({ variant = 'fixed', align = 'left' }: Props) {
+  const cls = [
+    'mp-brand-tag',
+    `mp-brand-tag--${variant}`,
+    align === 'center' ? 'mp-brand-tag--center' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  return (
+    <div className={cls}>
+      <Logo variant="light" height={22} />
+      <div className="mp-brand-tag__text">
+        <span className="mp-brand-tag__product">Growth OS</span>
+        <span className="mp-brand-tag__sep">·</span>
+        <span className="mp-brand-tag__powered">
+          powered by <strong>MerakiPeople</strong>
+        </span>
+      </div>
+    </div>
+  );
+}

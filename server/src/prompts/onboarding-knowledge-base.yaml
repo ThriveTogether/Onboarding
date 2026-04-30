@@ -1,0 +1,49 @@
+name: "onboarding-knowledge-base"
+version: "1.0"
+description: "Generates Doc 5 of 5: the Company Knowledge Base ('What your AI knows'). Auto-pushed without founder review."
+model: "claude-sonnet-4-5-20250929"
+max_tokens: 2000
+temperature: 0.4
+system_prompt: |
+  You are a senior sales enablement lead at MerakiPeople generating a Company Knowledge Base doc. The AI uses this doc whenever it needs to represent the company — so accuracy matters more than style.
+
+  Rules:
+  - Grounded strictly in the research signals + founder inputs. Never invent products or claims.
+  - If a detail is unknown, omit it rather than guessing.
+  - Include: company description, products/services, positioning angles, target market, key differentiators, common objections + responses, competitors.
+  - Write in the third person, as if a new rep is reading it to get up to speed.
+
+  {{PREVIOUS_FEEDBACK}}
+user_prompt: |
+  Generate the Company Knowledge Base for:
+
+  Company: {{COMPANY_NAME}}
+  Website: {{WEBSITE_URL}}
+  LinkedIn: {{LINKEDIN_URL}}
+  Vertical: {{VERTICAL_DISPLAY_NAME}}
+
+  Approved target profile:
+  {{TARGET_PROFILE_JSON}}
+
+  Company research signals:
+  {{RESEARCH_SUMMARY}}
+
+  Vertical knowledge template defaults (use as scaffolding, keep only what applies):
+  {{VERTICAL_KNOWLEDGE_JSON}}
+
+  Founder feedback — especially important for competitor list + positioning angles:
+  {{FOUNDER_FEEDBACK}}
+
+  Produce a factual knowledge base.
+evidence_requirements:
+  - "Every product/service claim traces back to research signals"
+  - "Objections + responses are realistic for this vertical"
+output_schema:
+  companyDescription: "string"
+  productsServices: ["string"]
+  positioningAngles: ["string"]
+  targetMarket: "string"
+  keyDifferentiators: ["string"]
+  commonObjections: [{ "objection": "string", "response": "string" }]
+  competitors: ["string"]
+  rationale: "string"

@@ -1,0 +1,61 @@
+name: "onboarding-nurture-strategy"
+version: "1.0"
+description: "Generates Doc 1 of 5: the Nurture Strategy ('How your AI sells'). Stage-by-stage communication plan for Cold → Warm → Hot."
+model: "claude-sonnet-4-5-20250929"
+max_tokens: 2500
+temperature: 0.5
+system_prompt: |
+  You are a senior sales strategist at MerakiPeople generating a Nurture Strategy doc for a customer's AI-driven outreach system. This doc tells the AI how to communicate with leads at every stage.
+
+  Quality bar: 80%+ right on first generation. The founder should be able to approve with minor tweaks, not rewrite.
+
+  Rules:
+  - Reference the founder's vertical, company name, and at least 2 specific details from the research. No generic "companies often face..." language.
+  - Stages are fixed: Cold Outreach, Warm/Engaged, Hot/Rep-Ready. Do not invent new stages.
+  - Per stage: channel (primary + secondary), tone, first-message approach, frequency (specific days), escalation behaviour.
+  - Handoff trigger must be concrete (e.g., "score > 76 AND 2 replies AND pricing mentioned").
+  - Read like a playbook a human sales head would approve — not like an AI-written doc.
+
+  {{PREVIOUS_FEEDBACK}}
+user_prompt: |
+  Generate the Nurture Strategy for:
+
+  Company: {{COMPANY_NAME}}
+  Vertical: {{VERTICAL_DISPLAY_NAME}}
+
+  Approved target profile:
+  {{TARGET_PROFILE_JSON}}
+
+  Company research signals:
+  {{RESEARCH_SUMMARY}}
+
+  Vertical nurture template (use as scaffolding, customize for this company):
+  {{VERTICAL_NURTURE_JSON}}
+
+  Founder feedback on the leads we surfaced (VERY HIGH SIGNAL — weight this heavily):
+  {{FOUNDER_FEEDBACK}}
+
+  Produce a stage-by-stage communication plan. If the founder flagged some leads as "already a customer", factor in warm-handoff messaging for upsell. If they flagged some as "skip", exclude those profiles from the approach.
+evidence_requirements:
+  - "Must reference the founder's specific vertical"
+  - "Each stage has channel, tone, approach, frequency, escalation"
+  - "Handoff trigger is concrete and measurable"
+output_schema:
+  coldOutreach:
+    channelPrimary: "string"
+    channelSecondary: "string"
+    tone: "string"
+    firstMessageApproach: "string"
+    frequencyDays: ["number"]
+    escalation: "string"
+  warmEngaged:
+    channel: "string"
+    tone: "string"
+    approach: "string"
+    proactiveIntervalDays: "number"
+    escalation: "string"
+  hotRepReady:
+    channel: "string"
+    handoffTrigger: "string"
+    repAction: "string"
+  rationale: "string"
