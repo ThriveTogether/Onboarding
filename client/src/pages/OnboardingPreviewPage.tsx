@@ -320,7 +320,7 @@ export default function OnboardingPreviewPage() {
             ← Back to docs
           </Button>
           <Button size="lg" onClick={() => navigate(`/onboarding/launch/${id}`)}>
-            Looks good — invite reps + launch →
+            Looks good — let's launch →
           </Button>
         </div>
       </div>

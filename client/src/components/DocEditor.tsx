@@ -232,10 +232,8 @@ function NurtureEditor({ value, onChange }: { value: any; onChange: (v: any) => 
         </div>
       )}
 
-      <div className="mp-editor-field" style={{ marginTop: 24 }}>
-        <div className="mp-editor-field__label">Rationale (notes for you)</div>
-        <TextArea value={value?.rationale} onChange={(v) => onChange({ ...value, rationale: v })} rows={3} />
-      </div>
+      {/* Rationale is the AI's "why" trail — shown as a read-only collapsible
+          in the renderer (CollapsibleInsight). Not editable. */}
     </div>
   );
 }
@@ -329,10 +327,7 @@ function ScoringEditor({ value, onChange }: { value: any; onChange: (v: any) => 
         />
       </div>
 
-      <div className="mp-editor-field">
-        <div className="mp-editor-field__label">Rationale</div>
-        <TextArea value={value?.rationale} onChange={(v) => onChange({ ...value, rationale: v })} rows={3} />
-      </div>
+      {/* Rationale is read-only — see CollapsibleInsight in DocRenderer. */}
     </div>
   );
 }
@@ -408,10 +403,7 @@ function BrandEditor({ value, onChange }: { value: any; onChange: (v: any) => vo
         </FieldRow>
       </div>
 
-      <div className="mp-editor-field">
-        <div className="mp-editor-field__label">Rationale</div>
-        <TextArea value={value?.rationale} onChange={(v) => onChange({ ...value, rationale: v })} rows={3} />
-      </div>
+      {/* Rationale is read-only — see CollapsibleInsight in DocRenderer. */}
     </div>
   );
 }

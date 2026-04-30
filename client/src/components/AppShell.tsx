@@ -9,6 +9,7 @@ import {
   Sparkles,
   Megaphone,
   PhoneCall,
+  Wand2,
   Settings as SettingsIcon,
   LogOut,
 } from 'lucide-react';
@@ -24,6 +25,7 @@ const NAV = [
   { to: '/app/learning-nuggets', label: 'Learning\nNuggets', icon: Sparkles },
   { to: '/app/campaigns', label: 'Campaigns', icon: Megaphone },
   { to: '/app/calls', label: 'Calls', icon: PhoneCall },
+  { to: '/app/prompt-templates', label: 'Prompt\nTemplates', icon: Wand2 },
   { to: '/app/settings', label: 'Settings', icon: SettingsIcon },
 ];
 

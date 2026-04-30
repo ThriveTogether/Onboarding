@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { RefreshCw, Upload } from 'lucide-react';
+import { RefreshCw, Upload, AlertTriangle } from 'lucide-react';
 import { onboardingAPI, OnboardingDoc, OnboardingDocKind } from '../api/onboarding';
 import PhaseProgress from '../components/PhaseProgress';
 import Card from '../components/Card';
@@ -62,8 +62,10 @@ export default function OnboardingDocsPage() {
   const [activeKind, setActiveKind] = useState<OnboardingDocKind>('nurture_strategy');
   const [draftContent, setDraftContent] = useState<any>(null);
   const [editing, setEditing] = useState(false);
-  const [action, setAction] = useState<'idle' | 'approving' | 'skipping' | 'regenerating' | 'uploading'>('idle');
+  const [action, setAction] = useState<'idle' | 'approving' | 'skipping' | 'regenerating' | 'uploading' | 'regenerating-all'>('idle');
   const [error, setError] = useState('');
+  // Sweep progress for "Regenerate all stale": null = not running.
+  const [sweep, setSweep] = useState<{ done: number; total: number; current: string } | null>(null);
   const nurtureFileRef = useRef<HTMLInputElement>(null);
 
   const loadDocs = async () => {
@@ -79,6 +81,9 @@ export default function OnboardingDocsPage() {
     }
   };
 
+  // Poll for doc updates while ANY doc is generating. Bumping `pollNonce`
+  // re-arms the interval after a regenerate kicks off a new generation cycle.
+  const [pollNonce, setPollNonce] = useState(0);
   useEffect(() => {
     loadDocs();
     const interval = setInterval(async () => {
@@ -90,11 +95,23 @@ export default function OnboardingDocsPage() {
       }
     }, 4000);
     return () => clearInterval(interval);
-  }, [id]);
+  }, [id, pollNonce]);
 
   const reviewableDocs = useMemo(() => docs.filter((d) => REVIEWABLE_ORDER.includes(d.kind)), [docs]);
   const activeDoc = docs.find((d) => d.kind === activeKind);
   const approvedCount = reviewableDocs.filter((d) => d.status === 'approved' || d.status === 'auto_approved').length;
+
+  // Stale = doc was generated when AI was unavailable, so its rationale string
+  // contains the "(AI fallback)" tag from fallbackFromTemplate(). Re-running
+  // regenerate now will use Claude.
+  const staleDocs = useMemo(
+    () =>
+      reviewableDocs.filter((d) => {
+        const r = (d.content as any)?.rationale;
+        return typeof r === 'string' && /AI fallback|vertical template/i.test(r);
+      }),
+    [reviewableDocs],
+  );
 
   useEffect(() => {
     if (activeDoc) setDraftContent(activeDoc.content);
@@ -138,11 +155,60 @@ export default function OnboardingDocsPage() {
   const handleRegenerate = async () => {
     if (!id || !activeDoc) return;
     setAction('regenerating');
+    setError('');
+    // Optimistically mark the active doc as generating so DocThinking renders
+    // the live ThinkingPanel immediately — the server has already started its
+    // session by the time this paint completes.
+    setDocs((prev) =>
+      prev.map((d) => (d._id === activeDoc._id ? { ...d, status: 'generating' as any } : d)),
+    );
+    // Re-arm the listDocs polling effect so the UI auto-updates as the doc
+    // progresses (the previous interval cleared once no docs were generating).
+    setPollNonce((n) => n + 1);
     try {
       await onboardingAPI.regenerateDoc(id, activeDoc.kind);
       await loadDocs();
+    } catch (e: any) {
+      setError(e.response?.data?.error || e.message || 'Regenerate failed');
+      // Roll back the optimistic update so the user can try again.
+      await loadDocs();
     } finally {
       setAction('idle');
+    }
+  };
+
+  // Sequentially regenerate every stale doc. Sequential (not parallel) because
+  // each regen is a 30-60s Claude call — running 4 in parallel would spike
+  // rate limits + make the dev experience worse than serial progress.
+  const handleRegenerateAllStale = async () => {
+    if (!id || staleDocs.length === 0) return;
+    setAction('regenerating-all');
+    setError('');
+    const total = staleDocs.length;
+    setSweep({ done: 0, total, current: staleDocs[0].title });
+
+    // Optimistically mark all stale docs as generating so the UI shows progress.
+    const staleIds = new Set(staleDocs.map((d) => d._id));
+    setDocs((prev) =>
+      prev.map((d) => (staleIds.has(d._id) ? { ...d, status: 'generating' as any } : d)),
+    );
+    setPollNonce((n) => n + 1);
+
+    const failures: string[] = [];
+    for (let i = 0; i < staleDocs.length; i++) {
+      const d = staleDocs[i];
+      setSweep({ done: i, total, current: d.title });
+      try {
+        await onboardingAPI.regenerateDoc(id, d.kind);
+      } catch (e: any) {
+        failures.push(`${d.title}: ${e.response?.data?.error || e.message || 'failed'}`);
+      }
+      await loadDocs();
+    }
+    setSweep(null);
+    setAction('idle');
+    if (failures.length > 0) {
+      setError(`${failures.length} doc(s) failed to regenerate: ${failures.join(' · ')}`);
     }
   };
 
@@ -173,6 +239,64 @@ export default function OnboardingDocsPage() {
           <h2 className="mp-h2" style={{ margin: '6px 0 4px' }}>Review your AI's playbook</h2>
           <p className="mp-body-sm mp-muted">{approvedCount} of {REVIEWABLE_ORDER.length} docs approved</p>
         </div>
+
+        {(staleDocs.length > 0 || sweep) && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '12px 16px',
+              marginBottom: 16,
+              background: 'rgba(252, 191, 73, 0.08)',
+              border: '1px solid rgba(252, 191, 73, 0.4)',
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--fg-0)',
+            }}
+          >
+            <AlertTriangle size={18} style={{ color: '#c47a07', flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {sweep ? (
+                <>
+                  <strong>Regenerating {sweep.done + 1} of {sweep.total}:</strong>{' '}
+                  <span className="mp-muted">{sweep.current}</span>
+                  <div
+                    style={{
+                      height: 4,
+                      background: 'rgba(0,0,0,0.06)',
+                      borderRadius: 2,
+                      marginTop: 6,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <div
+                      style={{
+                        height: '100%',
+                        width: `${(sweep.done / sweep.total) * 100}%`,
+                        background: '#c47a07',
+                        transition: 'width 250ms ease',
+                      }}
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <strong>{staleDocs.length} doc{staleDocs.length === 1 ? ' was' : 's were'} generated without AI</strong>{' '}
+                  <span className="mp-muted">— Claude is now available; regenerate them to get personalised content.</span>
+                </>
+              )}
+            </div>
+            {!sweep && (
+              <Button
+                onClick={handleRegenerateAllStale}
+                disabled={action !== 'idle'}
+                size="sm"
+              >
+                <RefreshCw size={14} strokeWidth={2} /> Regenerate all stale
+              </Button>
+            )}
+          </div>
+        )}
 
         <div className="mp-doc-layout">
           {/* Sidebar */}

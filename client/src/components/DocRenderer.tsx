@@ -25,37 +25,50 @@ export default function DocRenderer({ doc }: DocRendererProps) {
 function NurtureStrategyRenderer({ content }: { content: any }) {
   const { coldOutreach, warmEngaged, hotRepReady, rationale } = content;
 
-  // Compact key facts per stage — pulled from the doc content. No long prose
-  // by default — full templates live in the flow-diagram cards (click to open).
-  const summary = [
+  // Per-stage summary: short metadata renders as chips, longer prose as a
+  // labeled paragraph. AI output is variable-length — forcing everything into
+  // pill bubbles (the old design) caused awkward shape + truncation.
+  type Row = { label: string; value: string };
+  const summary: Array<{
+    label: string;
+    icon: typeof Snowflake;
+    tint: string;
+    chips: string[];
+    rows: Row[];
+  }> = [
     {
       label: 'Cold',
       icon: Snowflake,
       tint: 'var(--mp-chart-2)',
-      facts: [
+      chips: [
         coldOutreach?.channelPrimary,
-        `Days ${(coldOutreach?.frequencyDays || []).join(', ')}`,
-        coldOutreach?.tone,
-      ].filter(Boolean),
+        coldOutreach?.frequencyDays?.length ? `Days ${coldOutreach.frequencyDays.join(', ')}` : '',
+      ].filter(Boolean) as string[],
+      rows: [
+        coldOutreach?.tone && { label: 'Tone', value: coldOutreach.tone },
+      ].filter(Boolean) as Row[],
     },
     {
       label: 'Warming',
       icon: Zap,
       tint: 'var(--mp-chart-4)',
-      facts: [
+      chips: [
         warmEngaged?.channel,
-        warmEngaged?.proactiveIntervalDays && `Every ${warmEngaged.proactiveIntervalDays} days`,
-        warmEngaged?.tone,
-      ].filter(Boolean),
+        warmEngaged?.proactiveIntervalDays ? `Every ${warmEngaged.proactiveIntervalDays} days` : '',
+      ].filter(Boolean) as string[],
+      rows: [
+        warmEngaged?.tone && { label: 'Tone', value: warmEngaged.tone },
+      ].filter(Boolean) as Row[],
     },
     {
       label: 'Hot',
       icon: Flame,
       tint: 'var(--mp-coral)',
-      facts: [
-        hotRepReady?.channel,
-        hotRepReady?.handoffTrigger?.split('.')[0],
-      ].filter(Boolean),
+      chips: [], // hot stage values are typically prose, not short tags
+      rows: [
+        hotRepReady?.channel && { label: 'Channel', value: hotRepReady.channel },
+        hotRepReady?.handoffTrigger && { label: 'Trigger', value: hotRepReady.handoffTrigger },
+      ].filter(Boolean) as Row[],
     },
   ];
 
@@ -64,23 +77,35 @@ function NurtureStrategyRenderer({ content }: { content: any }) {
       {/* PRIMARY: Interactive flow diagram */}
       <NurtureFlowDiagram content={content} />
 
-      {/* Compact summary chips — minimal facts only */}
+      {/* Per-stage summary cards: chips for metadata, labeled rows for prose */}
       <div className="mp-nurture-summary">
         {summary.map((s) => {
           const Icon = s.icon;
           return (
             <div key={s.label} className="mp-nurture-summary__item" style={{ borderTopColor: s.tint }}>
               <div className="mp-nurture-summary__head">
-                <Icon size={12} style={{ color: s.tint }} />
+                <Icon size={14} style={{ color: s.tint }} />
                 <span>{s.label}</span>
               </div>
-              <div className="mp-nurture-summary__facts">
-                {s.facts.map((f, i) => (
-                  <span key={i} className="mp-nurture-summary__fact">
-                    {String(f)}
-                  </span>
-                ))}
-              </div>
+              {s.chips.length > 0 && (
+                <div className="mp-nurture-summary__chips">
+                  {s.chips.map((c, i) => (
+                    <span key={i} className="mp-nurture-summary__chip">
+                      {c}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {s.rows.length > 0 && (
+                <dl className="mp-nurture-summary__rows">
+                  {s.rows.map((r, i) => (
+                    <div key={i} className="mp-nurture-summary__row">
+                      <dt>{r.label}</dt>
+                      <dd>{r.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
             </div>
           );
         })}

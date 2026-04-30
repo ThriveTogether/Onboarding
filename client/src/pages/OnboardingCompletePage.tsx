@@ -4,18 +4,57 @@ import { Check, Copy, Send } from 'lucide-react';
 import { onboardingAPI } from '../api/onboarding';
 import Card from '../components/Card';
 
+interface SessionSummary {
+  successMetric: string;
+  // The four stats we surface — "what you built during onboarding".
+  // Each one reflects a distinct axis of work so no two cards collide.
+  leadCount: number;          // pipeline depth   (output)
+  docsApproved: number;       // strategy ready   (decisions)
+  docsTotal: number;
+  messageTemplates: number;   // voice authored   (channel × stage)
+  painSignals: number;        // customer insight (ICP articulation)
+}
+
 export default function OnboardingCompletePage() {
   const { id } = useParams<{ id: string }>();
-  const [summary, setSummary] = useState<{ leadCount: number; repCount: number; successMetric: string } | null>(null);
+  const [summary, setSummary] = useState<SessionSummary | null>(null);
   const [invites, setInvites] = useState<Array<{ email: string; inviteLink: string }>>([]);
 
   useEffect(() => {
     if (!id) return;
     onboardingAPI.state(id).then(({ data }) => {
+      const company: any = data.company || {};
+      const docs: any[] = (data as any).docs || [];
+      // Reviewable docs only (4 — nurture, scoring, brand, knowledge). The
+      // target_profile is an auto-approved separate doc and shouldn't count
+      // against this stat (otherwise the founder sees "5/4 ready").
+      const reviewableKinds = new Set([
+        'nurture_strategy',
+        'scoring_framework',
+        'brand_guidelines',
+        'knowledge_base',
+      ]);
+      const approvedStatuses = new Set(['approved', 'auto_approved']);
+      const docsApproved = docs.filter(
+        (d) => reviewableKinds.has(d.kind) && approvedStatuses.has(d.status),
+      ).length;
+
+      // Pain signals the founder articulated in their target profile — the
+      // customer-problem axis, distinct from leads (output), docs (strategy),
+      // and message templates (channels).
+      const painSignals = Array.isArray(company.targetProfile?.painSignals)
+        ? company.targetProfile.painSignals.filter((p: string) => p && p.trim()).length
+        : 0;
+
       setSummary({
-        leadCount: data.leadCount,
-        repCount: data.reps?.length || 0,
-        successMetric: data.company?.successMetric || '',
+        successMetric: company.successMetric || '',
+        leadCount: data.leadCount || 0,
+        docsApproved,
+        docsTotal: 4,
+        messageTemplates: Array.isArray(company.messageTemplates)
+          ? company.messageTemplates.filter((t: any) => t?.body).length
+          : 0,
+        painSignals,
       });
       setInvites(data.reps?.map((r: any) => ({ email: r.email, inviteLink: r.inviteLink })) || []);
     });
@@ -47,9 +86,21 @@ export default function OnboardingCompletePage() {
           </p>
 
           {summary && (
-            <div className="mp-grid-2" style={{ marginBottom: 24 }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, 1fr)',
+                gap: 12,
+                marginBottom: 24,
+              }}
+            >
               <Stat value={summary.leadCount} label="leads in your pipeline" />
-              <Stat value={summary.repCount} label="reps invited" />
+              <Stat
+                value={`${summary.docsApproved}/${summary.docsTotal}`}
+                label="strategy docs ready"
+              />
+              <Stat value={summary.messageTemplates} label="message templates drafted" />
+              <Stat value={summary.painSignals} label="customer pain signals captured" />
             </div>
           )}
 
@@ -87,7 +138,7 @@ export default function OnboardingCompletePage() {
   );
 }
 
-function Stat({ value, label }: { value: number; label: string }) {
+function Stat({ value, label }: { value: number | string; label: string }) {
   return (
     <div style={{ background: 'var(--bg-2)', borderRadius: 'var(--radius-md)', padding: 16 }}>
       <div style={{ fontSize: 'var(--fs-3xl)', fontWeight: 700, color: 'var(--mp-coral)', letterSpacing: 'var(--tracking-tight)', lineHeight: 1 }}>

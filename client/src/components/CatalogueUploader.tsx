@@ -236,14 +236,20 @@ function FormattedExtract({ text }: { text: string }) {
       </div>
       <div className="mp-catalogue__doc">
         {blocks.map((b, i) => {
-          if (b.type === 'heading') return <h4 key={i} className="mp-catalogue__doc-h">{b.text}</h4>;
+          if (b.type === 'separator') return <hr key={i} className="mp-catalogue__doc-hr" />;
+          if (b.type === 'heading') {
+            const level = b.level ?? 4;
+            const cls = `mp-catalogue__doc-h mp-catalogue__doc-h--l${level}`;
+            const Tag = (level === 1 ? 'h2' : level === 2 ? 'h3' : level === 3 ? 'h4' : 'h5') as keyof JSX.IntrinsicElements;
+            return React.createElement(Tag, { key: i, className: cls }, renderInline(b.text || ''));
+          }
           if (b.type === 'list')
             return (
               <ul key={i} className="mp-catalogue__doc-list">
-                {(b.items || []).map((item, j) => <li key={j}>{item}</li>)}
+                {(b.items || []).map((item, j) => <li key={j}>{renderInline(item)}</li>)}
               </ul>
             );
-          return <p key={i} className="mp-catalogue__doc-p">{b.text}</p>;
+          return <p key={i} className="mp-catalogue__doc-p">{renderInline(b.text || '')}</p>;
         })}
       </div>
       {hasMore && (
@@ -260,13 +266,46 @@ function FormattedExtract({ text }: { text: string }) {
 }
 
 interface TextBlock {
-  type: 'heading' | 'paragraph' | 'list';
+  type: 'heading' | 'paragraph' | 'list' | 'separator';
+  level?: number; // for heading: 1 (=#), 2 (=##), 3 (=###), 4+ (heuristic)
   text?: string;
   items?: string[];
 }
 
+/**
+ * Render inline Markdown: **bold** → <strong>. Other inline markup (italic,
+ * code, links) is left as plain text — most uploaded catalogues use bold
+ * heavily and rarely use the others.
+ */
+function renderInline(text: string): React.ReactNode[] {
+  if (!text.includes('**')) return [text];
+  const out: React.ReactNode[] = [];
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  parts.forEach((part, i) => {
+    const m = part.match(/^\*\*(.+)\*\*$/);
+    out.push(m ? <strong key={i}>{m[1]}</strong> : part);
+  });
+  return out;
+}
+
+/**
+ * Strip leading YAML frontmatter (the `---` ... `---` block at the very top
+ * of many Markdown docs). Without this, the YAML keys flow into the first
+ * paragraph as "doc_type: knowledge_base client: ..." which is ugly.
+ */
+function stripFrontmatter(text: string): string {
+  // Must start with --- on its own line, and have a closing --- within ~50 lines.
+  const m = text.match(/^---\s*\n([\s\S]*?)\n---\s*\n?/);
+  if (!m) return text;
+  // Sanity: only strip if it looks like key: value pairs
+  const inner = m[1];
+  const looksLikeYaml = inner.split('\n').some((l) => /^[a-zA-Z_][a-zA-Z0-9_-]*\s*:/.test(l));
+  return looksLikeYaml ? text.slice(m[0].length) : text;
+}
+
 function parseTextBlocks(text: string): TextBlock[] {
-  const lines = text.split(/\n/).map((l) => l.trim());
+  const stripped = stripFrontmatter(text);
+  const lines = stripped.split(/\n/);
   const blocks: TextBlock[] = [];
   let currentList: string[] | null = null;
   let currentParagraph: string[] = [];
@@ -285,16 +324,37 @@ function parseTextBlocks(text: string): TextBlock[] {
   };
 
   for (const raw of lines) {
-    const line = raw.replace(/\s+/g, ' ').trim();
+    const line = raw.trim();
+
     if (!line) {
-      // Blank line = paragraph break
       flushList();
       flushParagraph();
       continue;
     }
 
-    // Bullet?
-    const bulletMatch = line.match(/^[•·\-*●]\s+(.+)$/);
+    // Markdown horizontal rule (---, ***, ___)
+    if (/^([-*_])\1{2,}\s*$/.test(line)) {
+      flushList();
+      flushParagraph();
+      blocks.push({ type: 'separator' });
+      continue;
+    }
+
+    // Markdown ATX heading: # / ## / ### / ...
+    const mdHeading = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
+    if (mdHeading) {
+      flushList();
+      flushParagraph();
+      blocks.push({
+        type: 'heading',
+        level: Math.min(mdHeading[1].length, 4),
+        text: mdHeading[2],
+      });
+      continue;
+    }
+
+    // Bullet (skip if it looks like bold marker — `**foo**` could match `*foo`)
+    const bulletMatch = line.match(/^[•·●]\s+(.+)$/) || line.match(/^[-*]\s+(?!\*)(.+)$/);
     if (bulletMatch) {
       flushParagraph();
       if (!currentList) currentList = [];
@@ -302,13 +362,12 @@ function parseTextBlocks(text: string): TextBlock[] {
       continue;
     }
 
-    // Heading? (short, mostly uppercase OR ends without punctuation and < 80 chars)
+    // Heuristic heading fallback (for non-markdown inputs)
     const isHeading =
       line.length < 90 &&
+      !line.includes('**') &&
       (
-        // ALL CAPS or Title Case Heading
         (line.toUpperCase() === line && /[A-Z]/.test(line) && line.length > 3) ||
-        // Short line, no terminal punctuation, all words capitalised
         (!line.match(/[.!?,:;]$/) &&
           line.split(' ').length <= 8 &&
           line.split(' ').every((w) => /^[A-Z0-9]/.test(w) || w.length <= 3))
@@ -317,11 +376,10 @@ function parseTextBlocks(text: string): TextBlock[] {
     if (isHeading) {
       flushList();
       flushParagraph();
-      blocks.push({ type: 'heading', text: line });
+      blocks.push({ type: 'heading', level: 4, text: line });
       continue;
     }
 
-    // Otherwise: append to paragraph
     flushList();
     currentParagraph.push(line);
   }

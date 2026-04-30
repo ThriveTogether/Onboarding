@@ -1313,8 +1313,15 @@ button { cursor: pointer; border: none; background: none; padding: 0; }
   font-size: 11px;
 }
 .mp-brand-tag__powered strong {
-  color: var(--mp-coral);
   font-weight: var(--fw-semibold);
+}
+/* MerakiPeople wordmark: "Meraki" indigo + "People" coral, matching the
+   MerakiPeople brand wordmark elsewhere in the platform. */
+.mp-brand-tag__meraki {
+  color: var(--mp-indigo);
+}
+.mp-brand-tag__people {
+  color: var(--mp-coral);
 }
 
 @media (max-width: 640px) {
@@ -2313,6 +2320,52 @@ button { cursor: pointer; border: none; background: none; padding: 0; }
   color: var(--fg-1);
 }
 
+/* New stage-card layout: short chips for metadata + labeled rows for prose. */
+.mp-nurture-summary__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.mp-nurture-summary__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  background: var(--bg-0);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--fg-1);
+  white-space: nowrap;
+}
+.mp-nurture-summary__rows {
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.mp-nurture-summary__row {
+  display: block;
+}
+.mp-nurture-summary__row dt {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+  margin-bottom: 3px;
+}
+.mp-nurture-summary__row dd {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-0);
+  word-break: break-word;
+}
+
 /* Native <details> styled to match */
 .mp-details {
   border: 1px solid var(--border-1);
@@ -3003,13 +3056,26 @@ button { cursor: pointer; border: none; background: none; padding: 0; }
 }
 
 .mp-catalogue__doc-h {
-  font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
   color: var(--fg-brand);
   margin: 14px 0 6px;
   letter-spacing: 0.01em;
 }
 .mp-catalogue__doc-h:first-child { margin-top: 0; }
+.mp-catalogue__doc-h--l1 { font-size: 17px; margin-top: 18px; }
+.mp-catalogue__doc-h--l2 { font-size: 15px; margin-top: 16px; }
+.mp-catalogue__doc-h--l3 { font-size: 13px; margin-top: 12px; }
+.mp-catalogue__doc-h--l4 { font-size: var(--fs-sm); }
+.mp-catalogue__doc-hr {
+  border: none;
+  border-top: 1px solid var(--border-1);
+  margin: 14px 0;
+}
+.mp-catalogue__doc-p strong,
+.mp-catalogue__doc-list strong {
+  color: var(--fg-0);
+  font-weight: var(--fw-semibold);
+}
 
 .mp-catalogue__doc-p {
   margin: 0 0 10px;

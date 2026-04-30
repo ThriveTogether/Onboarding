@@ -1,7 +1,10 @@
 import dotenv from 'dotenv';
 import path from 'path';
 
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+// override:true so values in our `.env` always win over inherited process.env
+// (Windows user-level vars sometimes leak in as empty strings and silently
+// disable AI features otherwise — see "ANTHROPIC_API_KEY not set" symptom).
+dotenv.config({ path: path.resolve(__dirname, '../../.env'), override: true });
 
 export const env = {
   PORT: Number(process.env.PORT) || 5001,

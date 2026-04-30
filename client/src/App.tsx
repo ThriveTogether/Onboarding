@@ -26,6 +26,7 @@ import LeadsPage from './pages/app/LeadsPage';
 import LeadDetailPage from './pages/app/LeadDetailPage';
 import SettingsPage from './pages/app/SettingsPage';
 import PlaceholderPage from './pages/app/PlaceholderPage';
+import PromptTemplatesPage from './pages/app/PromptTemplatesPage';
 
 function DocsRouter() {
   const { company, loading } = useOnboarding();
@@ -153,6 +154,7 @@ export default function App() {
                 bodyLines={['Pairs with Call Preparation and Post Call Analysis.']}
               />
             } />
+            <Route path="prompt-templates" element={<PromptTemplatesPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
           </Route>{/* end ProtectedRoute */}

@@ -56,8 +56,10 @@ export default function Logo({
         Career
       </text>
 
-      {/* 247 badge — rounded outline with internal divider */}
-      <g transform="translate(165, 8)">
+      {/* 247 badge — rounded outline with internal divider.
+          Tightened gap (was 165 → 140) to match the actual Career247 wordmark
+          where the badge sits close to "Career", not floating mid-air. */}
+      <g transform="translate(140, 8)">
         <rect
           x="0"
           y="0"

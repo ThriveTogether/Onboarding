@@ -36,7 +36,11 @@ export default function BrandTag({ variant = 'fixed', align = 'left' }: Props) {
         <span className="mp-brand-tag__product">Growth OS</span>
         <span className="mp-brand-tag__sep">·</span>
         <span className="mp-brand-tag__powered">
-          powered by <strong>MerakiPeople</strong>
+          powered by{' '}
+          <strong>
+            <span className="mp-brand-tag__meraki">Meraki</span>
+            <span className="mp-brand-tag__people">People</span>
+          </strong>
         </span>
       </div>
     </div>
