@@ -173,12 +173,12 @@ router.post('/company', async (req: Request, res: Response) => {
   // If the user already has a company, update it instead of creating a duplicate.
   let company;
   if (user.companyId) {
-    // Detect whether any field that invalidates downstream artifacts changed.
-    // If yes, also wipe cached research + ICP candidates so the next prediction
-    // re-runs from scratch with the new inputs (otherwise the founder sees
-    // stale cards based on the old vertical/website).
+    // The founder hit "Save & re-run ICP" — the intent is always a fresh run,
+    // even if they didn't edit any specific field. So always wipe the cached
+    // ICP candidates on this path. Research is more expensive, so we only
+    // reset its statuses when the inputs that drive it actually changed.
     const existing = await OnboardingCompany.findById(user.companyId);
-    const wipeCache =
+    const researchInputChanged =
       !!existing &&
       (existing.vertical !== vertical ||
         existing.websiteUrl !== normaliseUrl(websiteUrl) ||
@@ -191,15 +191,23 @@ router.post('/company', async (req: Request, res: Response) => {
       vertical,
       salesTeamSize,
       shohiniReviewFlag: vertical === 'other',
+      // Always wipe ICP candidates on update so the predictor re-runs.
+      targetProfileCandidates: [],
+      'targetProfile.locked': false,
     };
-    if (wipeCache) {
-      update.targetProfileCandidates = [];
-      update['targetProfile.locked'] = false;
+    if (researchInputChanged) {
       update['research.linkedin.status'] = 'pending';
       update['research.website.status'] = 'pending';
       update['research.publicSources.status'] = 'pending';
     }
     company = await OnboardingCompany.findByIdAndUpdate(user.companyId, update, { new: true });
+
+    // Cancel any in-flight prediction session so the next predict-profile call
+    // doesn't dedupe-reuse a stale active session and serve old fallback cards.
+    await ReasoningSession.updateMany(
+      { operation: 'predictTargetProfile', companyId: user.companyId, status: 'active' },
+      { $set: { status: 'error', errorMessage: 'Cancelled — founder re-saved their basics.', completedAt: new Date() } },
+    );
   } else {
     company = await OnboardingCompany.create({
       userId: user._id,
