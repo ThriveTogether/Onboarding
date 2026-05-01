@@ -7,6 +7,34 @@ interface DocLike {
 }
 
 /**
+ * Coerce anything the AI might return into a renderable string. Some prompts
+ * occasionally return arrays/objects where we expect strings; without this
+ * coercion React throws "Objects are not valid as a React child" and the
+ * entire docs page goes blank when the founder lands on a nurture/brand
+ * doc with a quirky content shape.
+ */
+function toStr(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (Array.isArray(v)) return v.map(toStr).filter(Boolean).join(', ');
+  if (typeof v === 'object') {
+    // Common shape: { value: '...' } or { text: '...' } — pick a sensible field
+    // before falling back to JSON.
+    const o = v as Record<string, unknown>;
+    if (typeof o.value === 'string') return o.value;
+    if (typeof o.text === 'string') return o.text;
+    if (typeof o.label === 'string') return o.label;
+    try {
+      return JSON.stringify(v);
+    } catch {
+      return '';
+    }
+  }
+  return String(v);
+}
+
+/**
  * Block-based rendering for the founder-facing onboarding step. Strips the
  * verbose backend doc down to "the bits a founder cares about right now":
  * nurture → channel + cadence + when-you-take-over per stage. Brand → voice
@@ -17,8 +45,33 @@ interface DocLike {
  * decision — nothing else.
  */
 export default function SimpleDocBlocks({ doc }: { doc: DocLike }) {
-  if (doc.kind === 'nurture_strategy') return <NurtureBlocks content={doc.content || {}} />;
-  if (doc.kind === 'brand_guidelines') return <BrandBlocks content={doc.content || {}} />;
+  // Wrap each renderer in a try/catch so a single quirky field can't blank
+  // the whole docs page — the founder still sees a friendly fallback and
+  // can hit Edit / Regenerate to fix it.
+  try {
+    if (doc.kind === 'nurture_strategy') return <NurtureBlocks content={doc.content || {}} />;
+    if (doc.kind === 'brand_guidelines') return <BrandBlocks content={doc.content || {}} />;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[SimpleDocBlocks] render error', err);
+    return (
+      <div
+        style={{
+          padding: 24,
+          background: 'var(--bg-1)',
+          border: '1px solid var(--border-1)',
+          borderRadius: 'var(--radius-md)',
+          color: 'var(--fg-2)',
+          textAlign: 'center',
+        }}
+      >
+        <strong>We couldn't render this doc.</strong>
+        <p className="mp-body-sm" style={{ margin: '4px 0 0' }}>
+          The content came back in an unexpected shape. Click <strong>Regenerate</strong> above, or <strong>Edit</strong> to tweak it manually.
+        </p>
+      </div>
+    );
+  }
   return null;
 }
 
@@ -39,9 +92,9 @@ function NurtureBlocks({ content }: { content: any }) {
         label="Cold outreach"
         sub="Your AI starts the conversation"
         rows={[
-          ['Channel', cold.channel],
-          ['Cadence', cold.cadence],
-          ['Goal', cold.goal],
+          ['Channel', toStr(cold.channel)],
+          ['Cadence', toStr(cold.cadence)],
+          ['Goal', toStr(cold.goal)],
         ]}
       />
       <StageBlock
@@ -50,9 +103,9 @@ function NurtureBlocks({ content }: { content: any }) {
         label="Warm follow-up"
         sub="They're engaged"
         rows={[
-          ['Channel', warm.channel],
-          ['Cadence', warm.cadence],
-          ['Escalation', warm.escalation],
+          ['Channel', toStr(warm.channel)],
+          ['Cadence', toStr(warm.cadence)],
+          ['Escalation', toStr(warm.escalation)],
         ]}
       />
       <StageBlock
@@ -61,15 +114,15 @@ function NurtureBlocks({ content }: { content: any }) {
         label="Hot — your turn"
         sub="They're ready to talk"
         rows={[
-          ['Trigger', hot.handoffTrigger],
-          ['Channel', hot.channel],
-          ['Your move', hot.repAction],
+          ['Trigger', toStr(hot.handoffTrigger)],
+          ['Channel', toStr(hot.channel)],
+          ['Your move', toStr(hot.repAction)],
         ]}
       />
-      {content?.rationale && (
+      {toStr(content?.rationale) && (
         <div className="mp-block-rationale">
           <div className="mp-overline" style={{ marginBottom: 4 }}>Why this works</div>
-          <p style={{ margin: 0, fontSize: 'var(--fs-sm)', color: 'var(--fg-1)' }}>{content.rationale}</p>
+          <p style={{ margin: 0, fontSize: 'var(--fs-sm)', color: 'var(--fg-1)' }}>{toStr(content.rationale)}</p>
         </div>
       )}
     </div>
@@ -89,7 +142,7 @@ function StageBlock({
   sub: string;
   rows: Array<[string, string | undefined]>;
 }) {
-  const visibleRows = rows.filter((r) => r[1] && r[1].trim().length > 0);
+  const visibleRows = rows.filter((r) => typeof r[1] === 'string' && r[1].trim().length > 0);
   return (
     <div className="mp-block">
       <div className="mp-block__head">
@@ -122,23 +175,25 @@ function StageBlock({
 // -----------------------------------------------------------------------------
 
 function BrandBlocks({ content }: { content: any }) {
-  const voice = content?.voice || content?.voiceSummary || '';
-  const tone = content?.tone || '';
-  const wordsUse: string[] = Array.isArray(content?.wordsUse)
+  const voice = toStr(content?.voice || content?.voiceSummary);
+  const tone = toStr(content?.tone);
+  const rawUse = Array.isArray(content?.wordsUse)
     ? content.wordsUse
     : Array.isArray(content?.preferredTerms)
     ? content.preferredTerms
     : [];
-  const wordsAvoid: string[] = Array.isArray(content?.wordsAvoid)
+  const rawAvoid = Array.isArray(content?.wordsAvoid)
     ? content.wordsAvoid
     : Array.isArray(content?.avoidTerms)
     ? content.avoidTerms
     : [];
-  const sample =
+  const wordsUse: string[] = rawUse.map(toStr).filter(Boolean);
+  const wordsAvoid: string[] = rawAvoid.map(toStr).filter(Boolean);
+  const sample = toStr(
     content?.sampleLine ||
-    content?.sampleMessage ||
-    (Array.isArray(content?.samples) && content.samples[0]) ||
-    '';
+      content?.sampleMessage ||
+      (Array.isArray(content?.samples) && content.samples[0]),
+  );
 
   return (
     <div className="mp-block-grid">
