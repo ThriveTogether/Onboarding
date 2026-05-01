@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { onboardingAPI, OnboardingVertical, SalesTeamSize } from '../api/onboarding';
 import { useOnboarding } from '../contexts/OnboardingContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -13,6 +13,10 @@ import Card from '../components/Card';
 
 export default function OnboardingWelcomePage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // ?edit=1 — set by "Back to company basics" links so the founder can edit
+  // their basics without being bounced forward by the resume guard.
+  const editMode = searchParams.get('edit') === '1';
   const { refresh, resumeUrl, loading: onbLoading, company } = useOnboarding();
   const [verticals, setVerticals] = useState<Array<{ key: string; displayName: string; isB2C: boolean }>>([]);
   const { user } = useAuth();
@@ -34,6 +38,20 @@ export default function OnboardingWelcomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.companyName]);
 
+  // Pre-fill from the existing company when the founder lands here in edit
+  // mode — they came back to correct something they already submitted.
+  useEffect(() => {
+    if (!editMode || !company) return;
+    setForm({
+      companyName: company.companyName || '',
+      websiteUrl: (company as any).websiteUrl || '',
+      linkedinUrl: (company as any).linkedinUrl || '',
+      vertical: (company.vertical as OnboardingVertical) || '',
+      salesTeamSize: ((company as any).salesTeamSize as SalesTeamSize) || '',
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editMode, company?._id]);
+
   useEffect(() => {
     onboardingAPI.listVerticals().then(({ data }) => setVerticals(data.verticals));
   }, []);
@@ -53,7 +71,9 @@ export default function OnboardingWelcomePage() {
       </div>
     );
   }
-  if (company && company.companyName && company.vertical && resumeUrl !== '/onboarding') {
+  // Resume guard — bounce forward UNLESS the founder explicitly clicked
+  // "Back to company basics" (editMode), in which case we let them edit.
+  if (!editMode && company && company.companyName && company.vertical && resumeUrl !== '/onboarding') {
     return <Navigate to={resumeUrl} replace />;
   }
 
@@ -88,7 +108,10 @@ export default function OnboardingWelcomePage() {
   return (
     <div className="mp-app-shell">
       <div className="mp-wizard">
-        <BrandHeader title="Welcome to Career247 Growth OS." subtitle="Let's get your sales engine running." />
+        <BrandHeader
+          title={editMode ? 'Update your company basics' : 'Welcome to Career247 Growth OS.'}
+          subtitle={editMode ? "Tweak anything below — we'll re-run the research and ICP prediction." : "Let's get your sales engine running."}
+        />
 
         <PhaseProgress phase="phase_a" step="a1" />
 
@@ -149,7 +172,9 @@ export default function OnboardingWelcomePage() {
             {error && <p className="mp-help mp-help--error">{error}</p>}
 
             <Button type="submit" disabled={!canSubmit || submitting} block size="lg">
-              {submitting ? 'Getting to know you…' : 'Next →'}
+              {submitting
+                ? editMode ? 'Saving…' : 'Getting to know you…'
+                : editMode ? 'Save & re-run ICP →' : 'Next →'}
             </Button>
           </form>
         </Card>

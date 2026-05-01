@@ -132,7 +132,7 @@ export default function OnboardingProfilePage() {
     return (
       <div className="mp-app-shell">
         <div className="mp-wizard mp-wizard--wide">
-          <WizardBackLink to="/onboarding" label="Back to company basics" />
+          <WizardBackLink to="/onboarding?edit=1" label="Back to company basics" />
           <PhaseProgress phase="phase_a" step="a2" />
 
           <div className="mp-text-center" style={{ marginBottom: 24 }}>
@@ -163,7 +163,7 @@ export default function OnboardingProfilePage() {
   return (
     <div className="mp-app-shell">
       <div className="mp-wizard mp-wizard--wide" style={{ maxWidth: 1200 }}>
-        <WizardBackLink to="/onboarding" label="Back to company basics" />
+        <WizardBackLink to="/onboarding?edit=1" label="Back to company basics" />
         <PhaseProgress phase="phase_a" step="a2" />
 
         <div className="mp-text-center" style={{ marginBottom: 12 }}>

@@ -173,18 +173,33 @@ router.post('/company', async (req: Request, res: Response) => {
   // If the user already has a company, update it instead of creating a duplicate.
   let company;
   if (user.companyId) {
-    company = await OnboardingCompany.findByIdAndUpdate(
-      user.companyId,
-      {
-        companyName,
-        websiteUrl: normaliseUrl(websiteUrl),
-        linkedinUrl: normaliseUrl(linkedinUrl),
-        vertical,
-        salesTeamSize,
-        shohiniReviewFlag: vertical === 'other',
-      },
-      { new: true }
-    );
+    // Detect whether any field that invalidates downstream artifacts changed.
+    // If yes, also wipe cached research + ICP candidates so the next prediction
+    // re-runs from scratch with the new inputs (otherwise the founder sees
+    // stale cards based on the old vertical/website).
+    const existing = await OnboardingCompany.findById(user.companyId);
+    const wipeCache =
+      !!existing &&
+      (existing.vertical !== vertical ||
+        existing.websiteUrl !== normaliseUrl(websiteUrl) ||
+        existing.linkedinUrl !== normaliseUrl(linkedinUrl));
+
+    const update: Record<string, any> = {
+      companyName,
+      websiteUrl: normaliseUrl(websiteUrl),
+      linkedinUrl: normaliseUrl(linkedinUrl),
+      vertical,
+      salesTeamSize,
+      shohiniReviewFlag: vertical === 'other',
+    };
+    if (wipeCache) {
+      update.targetProfileCandidates = [];
+      update['targetProfile.locked'] = false;
+      update['research.linkedin.status'] = 'pending';
+      update['research.website.status'] = 'pending';
+      update['research.publicSources.status'] = 'pending';
+    }
+    company = await OnboardingCompany.findByIdAndUpdate(user.companyId, update, { new: true });
   } else {
     company = await OnboardingCompany.create({
       userId: user._id,
