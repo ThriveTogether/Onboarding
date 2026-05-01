@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import {
   Check,
   Building2,
@@ -8,7 +8,7 @@ import {
   MessageSquare,
   Flame,
   TrendingUp,
-  ChevronRight,
+  Mail,
 } from 'lucide-react';
 import { onboardingAPI } from '../api/onboarding';
 import Card from '../components/Card';
@@ -130,10 +130,10 @@ export default function OnboardingCompletePage() {
             <Check size={28} strokeWidth={2.5} />
           </div>
           <h2 className="mp-h2" style={{ margin: 0 }}>
-            {summary?.companyName ? `${summary.companyName}'s sales engine is live.` : 'Your sales engine is live.'}
+            {summary?.companyName ? `${summary.companyName} — you're all set.` : "You're all set."}
           </h2>
           <p className="mp-body-sm mp-muted" style={{ marginTop: 6, marginBottom: 0 }}>
-            Here's what we built together — and the first leads to call today.
+            Here's everything we put together with you. Team Meraki will reach out shortly to walk you through what's next.
           </p>
         </Card>
 
@@ -219,15 +219,30 @@ export default function OnboardingCompletePage() {
           </Card>
         )}
 
-        {/* CTAs */}
-        <div className="mp-complete-cta">
-          <Link to="/app/leads" className="mp-btn mp-btn--accent mp-btn--lg">
-            Start with these leads <ChevronRight size={16} />
-          </Link>
-          <Link to="/app/target-profile" className="mp-btn mp-btn--outline mp-btn--lg">
-            Open MerakiPeople
-          </Link>
-        </div>
+        {/* Hand-off — Team Meraki takes it from here. The seamless transition
+            into MerakiPeople is parked; for now the founder gets a clear
+            "we'll reach out" message instead of a dead-end CTA. */}
+        <Card padding="lg" tone="tinted" className="mp-text-center">
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: '50%',
+              background: 'var(--bg-brand-soft)',
+              color: 'var(--mp-indigo)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: 10,
+            }}
+          >
+            <Mail size={22} strokeWidth={2} />
+          </div>
+          <h3 className="mp-h4" style={{ margin: '0 0 6px' }}>Team Meraki will reach out shortly</h3>
+          <p className="mp-body-sm mp-muted" style={{ margin: 0 }}>
+            We'll walk you through the leads, your strategy docs, and how to start your first conversations. Keep an eye on your inbox.
+          </p>
+        </Card>
       </div>
     </div>
   );
