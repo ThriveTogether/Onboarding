@@ -175,29 +175,48 @@ function StageBlock({
 // -----------------------------------------------------------------------------
 
 function BrandBlocks({ content }: { content: any }) {
-  const voice = toStr(content?.voice || content?.voiceSummary);
-  const tone = toStr(content?.tone);
-  const rawUse = Array.isArray(content?.wordsUse)
+  // The brand prompt schema returns a nested `voice` object
+  // ({ tone, languageLevel, firstPersonStyle, signOffStyle }), `dos`/`donts`
+  // arrays, and a `samples` object ({ coldWhatsApp, followupWhatsApp }).
+  // We surface the most useful sub-fields, gracefully falling back to flat
+  // legacy keys (voice/tone) if an older or hand-edited doc has them.
+  const voiceObj = (content?.voice && typeof content.voice === 'object') ? content.voice : null;
+  const voiceLine = voiceObj
+    ? [voiceObj.firstPersonStyle, voiceObj.languageLevel].map(toStr).filter(Boolean).join(' · ')
+    : toStr(content?.voiceSummary);
+  const tone = voiceObj ? toStr(voiceObj.tone) : toStr(content?.tone);
+
+  const rawUse = Array.isArray(content?.dos)
+    ? content.dos
+    : Array.isArray(content?.wordsUse)
     ? content.wordsUse
     : Array.isArray(content?.preferredTerms)
     ? content.preferredTerms
     : [];
-  const rawAvoid = Array.isArray(content?.wordsAvoid)
+  const rawAvoid = Array.isArray(content?.donts)
+    ? content.donts
+    : Array.isArray(content?.wordsAvoid)
     ? content.wordsAvoid
     : Array.isArray(content?.avoidTerms)
     ? content.avoidTerms
     : [];
   const wordsUse: string[] = rawUse.map(toStr).filter(Boolean);
   const wordsAvoid: string[] = rawAvoid.map(toStr).filter(Boolean);
+
+  const samplesObj = (content?.samples && typeof content.samples === 'object' && !Array.isArray(content.samples))
+    ? content.samples
+    : null;
   const sample = toStr(
     content?.sampleLine ||
       content?.sampleMessage ||
+      samplesObj?.coldWhatsApp ||
+      samplesObj?.followupWhatsApp ||
       (Array.isArray(content?.samples) && content.samples[0]),
   );
 
   return (
     <div className="mp-block-grid">
-      {(voice || tone) && (
+      {(voiceLine || tone) && (
         <div className="mp-block">
           <div className="mp-block__head">
             <div className="mp-block__icon" style={{ background: 'var(--mp-indigo)', color: '#fff' }}>
@@ -209,16 +228,16 @@ function BrandBlocks({ content }: { content: any }) {
             </div>
           </div>
           <dl className="mp-block__rows">
-            {voice && (
-              <div className="mp-block__row">
-                <dt>Voice</dt>
-                <dd>{voice}</dd>
-              </div>
-            )}
             {tone && (
               <div className="mp-block__row">
                 <dt>Tone</dt>
                 <dd>{tone}</dd>
+              </div>
+            )}
+            {voiceLine && (
+              <div className="mp-block__row">
+                <dt>Style</dt>
+                <dd>{voiceLine}</dd>
               </div>
             )}
           </dl>
