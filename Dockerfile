@@ -8,7 +8,9 @@ RUN npm ci --workspaces --include-workspace-root
 
 COPY client ./client
 COPY server ./server
-RUN npm run build -w client && npm run build -w server
+RUN npm run build -w client && npm run build -w server \
+ && cp -r server/src/prompts server/dist/prompts \
+ && cp -r server/src/prompt_templates server/dist/prompt_templates
 
 FROM node:20-alpine AS runner
 WORKDIR /app
