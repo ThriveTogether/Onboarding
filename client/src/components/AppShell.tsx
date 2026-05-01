@@ -1,32 +1,28 @@
 import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import {
+  Briefcase,
   Target,
+  FileText,
+  Workflow,
+  Gauge,
+  Palette,
   Building2,
   Users,
-  Phone,
-  BookOpen,
-  Sparkles,
-  Megaphone,
-  PhoneCall,
-  Wand2,
-  Settings as SettingsIcon,
   LogOut,
 } from 'lucide-react';
 import Logo from './Logo';
 import { useAuth } from '../contexts/AuthContext';
 
 const NAV = [
-  { to: '/app/target-profile', label: 'Target\nProfile', icon: Target },
+  { to: '/app/company-profile', label: 'Company\nProfile', icon: Briefcase },
+  { to: '/app/target-profile', label: 'Target\nProfiles', icon: Target },
+  { to: '/app/product-brochure', label: 'Product\nBrochure', icon: FileText },
+  { to: '/app/nurture-strategy', label: 'Nurture\nStrategy', icon: Workflow },
+  { to: '/app/lead-score-framework', label: 'Lead Score\nFramework', icon: Gauge },
+  { to: '/app/branding-guidelines', label: 'Branding\nGuidelines', icon: Palette },
   { to: '/app/accounts', label: 'Accounts', icon: Building2 },
   { to: '/app/leads', label: 'Leads', icon: Users },
-  { to: '/app/post-call-analysis', label: 'Post Call\nAnalysis', icon: Phone },
-  { to: '/app/call-preparation', label: 'Call\nPreparation', icon: BookOpen },
-  { to: '/app/learning-nuggets', label: 'Learning\nNuggets', icon: Sparkles },
-  { to: '/app/campaigns', label: 'Campaigns', icon: Megaphone },
-  { to: '/app/calls', label: 'Calls', icon: PhoneCall },
-  { to: '/app/prompt-templates', label: 'Prompt\nTemplates', icon: Wand2 },
-  { to: '/app/settings', label: 'Settings', icon: SettingsIcon },
 ];
 
 export default function AppShell() {

@@ -14,6 +14,11 @@ export const env = {
   SERPER_API_KEY: process.env.SERPER_API_KEY || '',
   JWT_SECRET: process.env.JWT_SECRET || 'meraki-onboarding-dev-secret-change-in-prod',
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '30d',
+  // Bridge target: where graduated founders + their prompts/keys land.
+  // Defaults to a sibling DB on the same cluster as MONGODB_URI ("meraki_admin").
+  // Override MERAKI_ADMIN_MONGODB_URI when the production cluster differs.
+  MERAKI_ADMIN_MONGODB_URI: process.env.MERAKI_ADMIN_MONGODB_URI || '',
+  MERAKI_ADMIN_DB: process.env.MERAKI_ADMIN_DB || 'meraki_admin',
 };
 
 export function validateEnv(): void {

@@ -24,9 +24,13 @@ import AppIndexPage from './pages/app/AppIndexPage';
 import TargetProfilePage from './pages/app/TargetProfilePage';
 import LeadsPage from './pages/app/LeadsPage';
 import LeadDetailPage from './pages/app/LeadDetailPage';
-import SettingsPage from './pages/app/SettingsPage';
 import PlaceholderPage from './pages/app/PlaceholderPage';
-import PromptTemplatesPage from './pages/app/PromptTemplatesPage';
+import CompanyProfilePage from './pages/app/CompanyProfilePage';
+import AccountsPage from './pages/app/AccountsPage';
+import ProductBrochurePage from './pages/app/ProductBrochurePage';
+import NurtureStrategyPage from './pages/app/NurtureStrategyPage';
+import LeadScoreFrameworkPage from './pages/app/LeadScoreFrameworkPage';
+import BrandingGuidelinesPage from './pages/app/BrandingGuidelinesPage';
 
 function DocsRouter() {
   const { company, loading } = useOnboarding();
@@ -62,7 +66,7 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
       <OnboardingProvider>
-        <BrandTag />
+        <BrandTag hideOnSidebarPages />
         <UserMenu />
         <Routes>
           {/* Public auth pages — redirect away if already signed in */}
@@ -91,71 +95,15 @@ export default function App() {
           {/* Post-launch product app — inside sidebar shell */}
           <Route path="/app" element={<AppShell />}>
             <Route index element={<AppIndexPage />} />
+            <Route path="company-profile" element={<CompanyProfilePage />} />
             <Route path="target-profile" element={<TargetProfilePage />} />
-            <Route path="accounts" element={
-              <PlaceholderPage
-                title="Accounts"
-                subtitle="Company-level view of your pipeline"
-                bodyTitle="Coming next"
-                bodyLines={[
-                  'This view rolls up leads into the companies they belong to — useful for account-based selling and territory reviews.',
-                  'Your target profile and locked lead pipeline are ready. Account grouping ships in the next sprint.',
-                ]}
-              />
-            } />
+            <Route path="product-brochure" element={<ProductBrochurePage />} />
+            <Route path="nurture-strategy" element={<NurtureStrategyPage />} />
+            <Route path="lead-score-framework" element={<LeadScoreFrameworkPage />} />
+            <Route path="branding-guidelines" element={<BrandingGuidelinesPage />} />
+            <Route path="accounts" element={<AccountsPage />} />
             <Route path="leads" element={<LeadsPage />} />
             <Route path="leads/:leadId" element={<LeadDetailPage />} />
-            <Route path="post-call-analysis" element={
-              <PlaceholderPage
-                title="Post Call Analysis"
-                subtitle="Call summaries, coaching signals, and next-action capture"
-                bodyTitle="Coming next"
-                bodyLines={[
-                  'Once your reps start logging calls, this view surfaces per-call sentiment, objection handling, and the AI-drafted follow-up.',
-                  'Ships in Month 2 of the Meraki 2.0 roadmap.',
-                ]}
-              />
-            } />
-            <Route path="call-preparation" element={
-              <PlaceholderPage
-                title="Call Preparation"
-                subtitle="Pre-call briefs, discovery prompts, and lead context in one view"
-                bodyTitle="Coming next"
-                bodyLines={[
-                  'Auto-generated briefs for each "Needs you" lead, built from your target profile, brand voice, and recent engagement signals.',
-                ]}
-              />
-            } />
-            <Route path="learning-nuggets" element={
-              <PlaceholderPage
-                title="Learning Nuggets"
-                subtitle="Bite-sized coaching delivered to reps based on live call patterns"
-                bodyTitle="Coming next"
-                bodyLines={[
-                  'When reps stumble on the same objection twice, the system pushes a 60-second nugget covering that exact situation.',
-                ]}
-              />
-            } />
-            <Route path="campaigns" element={
-              <PlaceholderPage
-                title="Campaigns"
-                subtitle="Multi-touch nurture campaigns driven by your approved strategy docs"
-                bodyTitle="Coming next"
-                bodyLines={[
-                  'Your approved nurture strategy auto-creates the first campaign. Manual sequences ship next.',
-                ]}
-              />
-            } />
-            <Route path="calls" element={
-              <PlaceholderPage
-                title="Calls"
-                subtitle="Inbound + outbound call queue with integrated prep and analysis"
-                bodyTitle="Coming next"
-                bodyLines={['Pairs with Call Preparation and Post Call Analysis.']}
-              />
-            } />
-            <Route path="prompt-templates" element={<PromptTemplatesPage />} />
-            <Route path="settings" element={<SettingsPage />} />
           </Route>
           </Route>{/* end ProtectedRoute */}
 

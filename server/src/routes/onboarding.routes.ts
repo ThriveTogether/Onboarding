@@ -1096,12 +1096,108 @@ router.post('/company/:id/launch', async (req: Request, res: Response) => {
   await company.save();
   await trackFunnelEvent('phase_b_complete', company._id, {});
 
+  // Bridge: graduate the founder into the MerakiPeople SuperAdmin database.
+  // Failures here MUST NOT roll back the launch — onboarding-side state is
+  // already saved above. We just log + surface the result in the response so
+  // the founder can see what synced.
+  let graduation: any = null;
+  try {
+    const { graduateToMerakiAdmin } = await import('../services/bridge/graduate');
+    graduation = await graduateToMerakiAdmin(company._id);
+    if (graduation.status === 'success') {
+      console.log(
+        `[bridge] graduated company=${company.companyName} → meraki_admin ` +
+          `(company_id=${graduation.meraki_company_id}, prompts seeded=${graduation.prompts_seeded.length})`,
+      );
+
+      // Fire-and-forget AI prompt customization. The founder gets back the
+      // launch response immediately (with scaffolded prompts already in
+      // meraki_admin); the customizer replaces those with bespoke prompts in
+      // the background over the next 2-3 minutes.
+      void (async () => {
+        try {
+          const { customizePromptsForCompany } = await import(
+            '../services/bridge/promptCustomizer'
+          );
+          await customizePromptsForCompany(company._id);
+        } catch (err: any) {
+          console.error('[customizer] post-graduation run threw:', err?.message || err);
+        }
+      })();
+    } else {
+      console.warn(`[bridge] graduation reported error: ${graduation.error}`);
+    }
+  } catch (err: any) {
+    console.error('[bridge] graduation threw:', err?.message || err);
+    graduation = { status: 'error', error: err?.message || 'graduation threw' };
+  }
+
   const leadCount = await OnboardingLead.countDocuments({ companyId: company._id });
   const repCount = await RepInvite.countDocuments({ companyId: company._id });
   return res.json({
     company,
     summary: { leadCount, repCount, successMetric: company.successMetric },
+    graduation,
   });
+});
+
+/**
+ * Re-trigger graduation for an already-launched company. Useful for
+ * (a) testing the bridge against an existing company without resetting
+ * launch state, and (b) refreshing meraki_admin records after the founder
+ * edits their docs / regenerates content.
+ *
+ * Idempotent: safe to call repeatedly. Won't overwrite manually edited
+ * system_prompts in SuperAdmin (those are skipped).
+ */
+router.post('/company/:id/graduate', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const company = await OnboardingCompany.findById(id);
+  if (!company) return res.status(404).json({ error: 'Company not found' });
+
+  try {
+    const { graduateToMerakiAdmin } = await import('../services/bridge/graduate');
+    const graduation = await graduateToMerakiAdmin(company._id);
+    return res.json({ graduation });
+  } catch (err: any) {
+    console.error('[bridge] /graduate threw:', err?.message || err);
+    return res.status(500).json({ error: err?.message || 'graduation failed' });
+  }
+});
+
+/**
+ * Trigger AI prompt customization for a company. Replaces the generic
+ * scaffolds (seeded by graduation) with bespoke system prompts generated
+ * + critiqued by Claude.
+ *
+ * Sync mode (default): waits for all 16 to complete (~2-3 min) and returns
+ * the full summary. Use for testing.
+ *
+ * Async mode (?async=1): fires the job and returns immediately. Use as the
+ * post-graduation hook so the founder isn't kept waiting.
+ */
+router.post('/company/:id/customize-prompts', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const company = await OnboardingCompany.findById(id);
+  if (!company) return res.status(404).json({ error: 'Company not found' });
+
+  const isAsync = req.query.async === '1' || req.query.async === 'true';
+
+  try {
+    const { customizePromptsForCompany } = await import('../services/bridge/promptCustomizer');
+    if (isAsync) {
+      // Fire-and-forget. Errors logged inside the customizer.
+      void customizePromptsForCompany(company._id).catch((err: any) =>
+        console.error('[customizer] async run threw:', err?.message || err),
+      );
+      return res.status(202).json({ status: 'queued', company_id: id });
+    }
+    const summary = await customizePromptsForCompany(company._id);
+    return res.json({ summary });
+  } catch (err: any) {
+    console.error('[customizer] /customize-prompts threw:', err?.message || err);
+    return res.status(500).json({ error: err?.message || 'customization failed' });
+  }
 });
 
 // ---------- Feature 6: Re-engagement / nudges ----------
