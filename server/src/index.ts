@@ -3,18 +3,30 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { env, validateEnv } from './config/env';
+import mongoose from 'mongoose';
 import { connectDB } from './config/db';
 import onboardingRoutes from './routes/onboarding.routes';
 import authRoutes from './routes/auth.routes';
 
 const app = express();
+const startedAt = Date.now();
 
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
 
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'meraki-onboarding-api', timestamp: new Date().toISOString() });
-});
+const healthHandler = (_req: express.Request, res: express.Response) => {
+  const dbState = mongoose.connection.readyState;
+  const dbOk = dbState === 1;
+  res.status(dbOk ? 200 : 503).json({
+    status: dbOk ? 'ok' : 'degraded',
+    service: 'meraki-onboarding-api',
+    db: ['disconnected', 'connected', 'connecting', 'disconnecting'][dbState] ?? 'unknown',
+    uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
+    timestamp: new Date().toISOString(),
+  });
+};
+app.get('/health', healthHandler);
+app.get('/api/health', healthHandler);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/onboarding', onboardingRoutes);
