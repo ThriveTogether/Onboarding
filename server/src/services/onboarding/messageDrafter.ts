@@ -36,9 +36,12 @@ const STAGE_GOAL: Record<MessageStage, string> = {
 };
 
 const CHANNEL_RULES: Record<MessageChannel, string> = {
-  email: 'Output keys: { subject (max 6 words), body (plain text, no greeting block — start with "Hi <FirstName>,"). Sign off with a name placeholder "— <Your name>"). Length follows length param. }',
-  linkedin: 'LinkedIn connection request — body MUST be ≤ 300 characters. No subject line (subject must be empty string). No greeting block — start with "Hi <FirstName>,". No sign-off needed (LinkedIn shows your name automatically).',
-  whatsapp: 'WhatsApp business opener — conversational, ≤ 2 short paragraphs. No subject (empty string). Start with "Hi <FirstName>,". One emoji max. End with a soft question, no sign-off.',
+  email:
+    'Email format. Subject: max 6 words, no quotes, no emojis. Body: plain text, start with "Hi <FirstName>," then the message, end with "— <YourName>". For hot/handoff stage, include a concrete CTA (calendar link placeholder "<calendar-link>" or a direct meeting question).',
+  linkedin:
+    'LinkedIn connection request. body MUST be ≤ 300 characters. subject MUST be the empty string "". Start body with "Hi <FirstName>,". No sign-off (LinkedIn shows your name automatically).',
+  whatsapp:
+    'WhatsApp business opener. Conversational, ≤ 2 short paragraphs. subject MUST be the empty string "". Start with "Hi <FirstName>,". One emoji max. End with a soft question, no sign-off.',
 };
 
 const LENGTH_HINT: Record<MessageLength, string> = {
@@ -120,25 +123,42 @@ ${leadContext}
 
 Draft the ${input.stage} ${input.channel} message now.`;
 
-  const result = await callClaude({
-    systemPrompt,
-    userPrompt,
-    model: 'claude-sonnet-4-5',
-    maxTokens: 1200,
-    temperature: 0.5,
-    timeoutMs: 45_000,
-  });
+  // Hot/handoff emails are the longest output (subject + multi-paragraph body
+  // with concrete CTA + rationale) and have historically blown past 1200 tokens.
+  const maxTokens = input.stage === 'hot' && input.channel === 'email' ? 1800 : 1200;
 
-  const parsed = extractJSON(result.content);
-  if (!parsed || typeof parsed !== 'object') {
-    throw new Error('Could not parse the drafted message. Try again.');
+  // One transparent retry on parse failure. The first attempt occasionally
+  // wraps JSON in stray prose despite the prompt; a second pass with a
+  // tightened reminder reliably parses.
+  let lastErr: unknown = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const reminder =
+      attempt === 2
+        ? '\n\nIMPORTANT: Your previous response could not be parsed. Return ONLY the JSON object — no prose before or after, no markdown code fences. Start with { and end with }.'
+        : '';
+
+    const result = await callClaude({
+      systemPrompt: systemPrompt + reminder,
+      userPrompt,
+      model: 'claude-sonnet-4-5',
+      maxTokens,
+      temperature: 0.5,
+      timeoutMs: 45_000,
+    });
+
+    const parsed = extractJSON(result.content);
+    if (parsed && typeof parsed === 'object') {
+      return {
+        subject: String((parsed as any).subject || '').trim(),
+        body: String((parsed as any).body || '').trim(),
+        rationale: String((parsed as any).rationale || '').trim(),
+      };
+    }
+    lastErr = new Error(
+      `Drafter returned unparseable output for ${input.stage}/${input.channel} (attempt ${attempt}).`,
+    );
   }
-
-  return {
-    subject: String(parsed.subject || '').trim(),
-    body: String(parsed.body || '').trim(),
-    rationale: String(parsed.rationale || '').trim(),
-  };
+  throw lastErr instanceof Error ? lastErr : new Error('Could not parse the drafted message. Try again.');
 }
 
 /**

@@ -154,7 +154,7 @@ function NurtureEditor({ value, onChange }: { value: any; onChange: (v: any) => 
         {[
           { key: 'cold' as const, label: 'Stage 1 · Cold outreach', Icon: Snowflake, color: 'var(--mp-chart-2)' },
           { key: 'warm' as const, label: 'Stage 2 · Warm / engaged', Icon: Zap, color: 'var(--mp-chart-4)' },
-          { key: 'hot' as const, label: 'Stage 3 · Hot / rep-ready', Icon: Flame, color: 'var(--mp-coral)' },
+          { key: 'hot' as const, label: 'Stage 3 · Hot / your turn', Icon: Flame, color: 'var(--mp-coral)' },
         ].map((s) => {
           const active = tab === s.key;
           return (

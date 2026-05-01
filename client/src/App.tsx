@@ -17,9 +17,6 @@ import OnboardingDocsPage from './pages/OnboardingDocsPage';
 import OnboardingPreviewPage from './pages/OnboardingPreviewPage';
 import OnboardingLaunchPage from './pages/OnboardingLaunchPage';
 import OnboardingCompletePage from './pages/OnboardingCompletePage';
-import RepWelcomePage from './pages/RepWelcomePage';
-import RepCVUploadPage from './pages/RepCVUploadPage';
-import RepMorningPlaybookPage from './pages/RepMorningPlaybookPage';
 import AppIndexPage from './pages/app/AppIndexPage';
 import TargetProfilePage from './pages/app/TargetProfilePage';
 import LeadsPage from './pages/app/LeadsPage';
@@ -106,11 +103,6 @@ export default function App() {
             <Route path="leads/:leadId" element={<LeadDetailPage />} />
           </Route>
           </Route>{/* end ProtectedRoute */}
-
-          {/* Rep public routes (outside shell — invite-token auth) */}
-          <Route path="/rep/:token" element={<RepWelcomePage />} />
-          <Route path="/rep/:token/cv" element={<RepCVUploadPage />} />
-          <Route path="/rep/:token/playbook" element={<RepMorningPlaybookPage />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

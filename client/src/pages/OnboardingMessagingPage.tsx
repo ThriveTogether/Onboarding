@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Mail, Linkedin, MessageCircle, Snowflake, Zap, Flame, RefreshCw, Save, Edit3, Check } from 'lucide-react';
 import { onboardingAPI } from '../api/onboarding';
@@ -16,7 +16,7 @@ type Formality = 'casual' | 'professional' | 'formal';
 const STAGES: { key: Stage; label: string; sub: string; icon: any; color: string }[] = [
   { key: 'cold', label: 'Cold outreach', sub: 'First touch', icon: Snowflake, color: 'var(--mp-chart-2)' },
   { key: 'warming', label: 'Warm follow-up', sub: 'They\'ve engaged', icon: Zap, color: 'var(--mp-chart-4)' },
-  { key: 'hot', label: 'Hot / handoff', sub: 'Rep-ready', icon: Flame, color: 'var(--mp-coral)' },
+  { key: 'hot', label: 'Hot / your turn', sub: 'Ready for you', icon: Flame, color: 'var(--mp-coral)' },
 ];
 
 const CHANNELS: { key: Channel; label: string; icon: any }[] = [
@@ -62,9 +62,16 @@ export default function OnboardingMessagingPage() {
   const key = `${stage}:${channel}` as `${Stage}:${Channel}`;
   const current = drafts[key] || defaultDraft();
 
-  // Auto-fetch a draft when entering a stage:channel that has nothing yet.
+  // Track which stage:channel pairs we've already kicked off auto-drafting for.
+  // Without this guard, a user switching tabs while a draft is mid-flight could
+  // land on a tab that never auto-fetches (e.g. hot:email after cold:email),
+  // because the previous effect bailed on `drafting === true` and `key` didn't
+  // change again. Each key gets exactly one auto-attempt; the user can hit
+  // "Re-draft" to retry on failure.
+  const attemptedKeys = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (drafts[key] || drafting) return;
+    if (drafts[key] || attemptedKeys.current.has(key)) return;
+    attemptedKeys.current.add(key);
     handleDraft(stage, channel);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);

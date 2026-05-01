@@ -134,7 +134,7 @@ function NurtureStrategyRenderer({ content }: { content: any }) {
               <ProseRow label="Hot handoff trigger" body={hotRepReady.handoffTrigger} />
             )}
             {hotRepReady?.repAction && (
-              <ProseRow label="Rep takeover" body={hotRepReady.repAction} />
+              <ProseRow label="Your move" body={hotRepReady.repAction} />
             )}
           </div>
         </details>

@@ -136,24 +136,24 @@ export default function OnboardingProfilePage() {
           <PhaseProgress phase="phase_a" step="a2" />
 
           <div className="mp-text-center" style={{ marginBottom: 24 }}>
-            <h2 className="mp-h2" style={{ margin: 0 }}>Drafting your target profiles</h2>
+            <h2 className="mp-h2" style={{ margin: 0 }}>Figuring out who you should sell to</h2>
             <p className="mp-body-sm mp-muted" style={{ marginTop: 6 }}>
-              Analysing your company across LinkedIn, website, and public sources to suggest three ICP variants.
+              Reading your website, LinkedIn, and the news. Sketching three customer profiles you can choose from.
             </p>
           </div>
 
           {sessionId ? (
             <ThinkingPanel
               sessionId={sessionId}
-              title="Drafting three ICP variants"
-              subtitle="Grounding each in multi-source research"
+              title="Working out your ideal customer"
+              subtitle="Reading your story, then drafting three options"
               onDone={handleSessionDone}
-              onError={() => setError('Prediction failed — try again')}
+              onError={() => setError('We hit a snag drafting your profiles. Try again.')}
             />
           ) : error ? (
             <Card padding="lg" className="mp-text-center"><p className="mp-help mp-help--error">{error}</p></Card>
           ) : (
-            <Card padding="lg" className="mp-text-center"><p className="mp-muted">Starting reasoning session…</p></Card>
+            <Card padding="lg" className="mp-text-center"><p className="mp-muted">Warming up the research engine…</p></Card>
           )}
         </div>
       </div>

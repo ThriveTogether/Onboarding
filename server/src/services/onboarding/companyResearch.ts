@@ -52,6 +52,10 @@ function emptyWebsite(status: ICompanyResearch['website']['status']): ICompanyRe
     toneSignals: [],
     competitorSignals: [],
     fetchedAt: new Date(),
+    freshness: 'unknown',
+    lastModified: null,
+    copyrightYear: null,
+    freshnessSignals: [],
   };
 }
 
@@ -185,7 +189,111 @@ async function fetchWebsiteResearch(
     toneSignals: [],
     competitorSignals: [],
     fetchedAt: new Date(),
+    freshness: 'unknown',
+    lastModified: null,
+    copyrightYear: null,
+    freshnessSignals: [],
   };
+}
+
+/**
+ * Best-effort website freshness check. We HEAD the homepage for a
+ * Last-Modified header, and if we can fetch the HTML cheaply, scan for a
+ * copyright year and recent date strings. Used by the docs flow to decide
+ * whether to auto-generate a brochure from the site or ask for an upload.
+ *
+ * Classification:
+ *  - 'fresh'   : Last-Modified within last 12 months OR © current year
+ *  - 'stale'   : Last-Modified > 18 months OR © year 2+ years behind
+ *  - 'unknown' : no signals / fetch failed
+ */
+async function checkWebsiteFreshness(
+  websiteUrl: string
+): Promise<{ freshness: 'fresh' | 'stale' | 'unknown'; lastModified: Date | null; copyrightYear: number | null; signals: string[] }> {
+  if (!websiteUrl || !websiteUrl.trim()) {
+    return { freshness: 'unknown', lastModified: null, copyrightYear: null, signals: [] };
+  }
+  const url = /^https?:\/\//i.test(websiteUrl) ? websiteUrl : `https://${websiteUrl}`;
+  const signals: string[] = [];
+  let lastModified: Date | null = null;
+  let copyrightYear: number | null = null;
+
+  // Step 1: HEAD for Last-Modified.
+  try {
+    const headRes = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(6_000) });
+    const lm = headRes.headers.get('last-modified');
+    if (lm) {
+      const d = new Date(lm);
+      if (!isNaN(d.getTime())) {
+        lastModified = d;
+        signals.push(`Last-Modified: ${d.toISOString().slice(0, 10)}`);
+      }
+    }
+  } catch {
+    // HEAD often blocked / not supported — fall through to GET.
+  }
+
+  // Step 2: GET (small body) for © year and any recent date strings.
+  try {
+    const getRes = await fetch(url, { method: 'GET', redirect: 'follow', signal: AbortSignal.timeout(8_000) });
+    if (getRes.ok) {
+      const reader = getRes.body?.getReader();
+      let html = '';
+      const decoder = new TextDecoder();
+      const maxBytes = 200_000;
+      let received = 0;
+      while (reader) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        received += value.length;
+        html += decoder.decode(value, { stream: true });
+        if (received >= maxBytes) {
+          await reader.cancel();
+          break;
+        }
+      }
+      const cMatch = html.match(/(?:©|&copy;|copyright)\s*(\d{4})/i);
+      if (cMatch) {
+        copyrightYear = parseInt(cMatch[1], 10);
+        signals.push(`Copyright year: ${copyrightYear}`);
+      }
+      // Look for recent date strings in headlines/posts (very loose).
+      const dateMatches = html.match(/(20\d{2})-(\d{2})-(\d{2})/g);
+      if (dateMatches && dateMatches.length > 0) {
+        const dates = dateMatches
+          .map((s) => new Date(s))
+          .filter((d) => !isNaN(d.getTime()))
+          .sort((a, b) => b.getTime() - a.getTime());
+        if (dates[0]) {
+          signals.push(`Latest date on page: ${dates[0].toISOString().slice(0, 10)}`);
+          if (!lastModified || dates[0] > lastModified) lastModified = dates[0];
+        }
+      }
+    }
+  } catch {
+    // GET failed — leave signals as-is.
+  }
+
+  // Classify.
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  let freshness: 'fresh' | 'stale' | 'unknown' = 'unknown';
+
+  if (lastModified) {
+    const ageMs = now.getTime() - lastModified.getTime();
+    const ageMonths = ageMs / (1000 * 60 * 60 * 24 * 30);
+    if (ageMonths <= 12) freshness = 'fresh';
+    else if (ageMonths >= 18) freshness = 'stale';
+  }
+  if (copyrightYear !== null) {
+    if (copyrightYear >= currentYear) {
+      freshness = 'fresh'; // © current year always wins
+    } else if (currentYear - copyrightYear >= 2 && freshness !== 'fresh') {
+      freshness = 'stale';
+    }
+  }
+
+  return { freshness, lastModified, copyrightYear, signals };
 }
 
 function extractDomain(url: string): string {
@@ -236,26 +344,94 @@ async function fetchPublicSources(companyName: string): Promise<ICompanyResearch
   }
 }
 
+export type ResearchSource = 'linkedin' | 'website' | 'freshness' | 'public';
+export interface ResearchProgressEvent {
+  source: ResearchSource;
+  phase: 'start' | 'done';
+  result?: ICompanyResearch['linkedin'] | ICompanyResearch['website'] | ICompanyResearch['publicSources'];
+}
+
+export interface RunResearchOptions {
+  onProgress?: (event: ResearchProgressEvent) => Promise<void> | void;
+}
+
+/**
+ * Multi-source research, run sequentially when an onProgress callback is
+ * supplied (so the caller can emit reasoning steps in the right order). Runs
+ * in parallel otherwise — the parallel path is what the eager warm-up uses.
+ */
 export async function runMultiSourceResearch(
-  companyId: mongoose.Types.ObjectId | string
+  companyId: mongoose.Types.ObjectId | string,
+  options: RunResearchOptions = {}
 ): Promise<IOnboardingCompany> {
   const company = await OnboardingCompany.findById(companyId);
   if (!company) throw new Error('Company not found');
 
   const companyName = company.companyName;
+  const { onProgress } = options;
 
-  const [linkedinRes, websiteRes, publicRes] = await Promise.allSettled([
-    withTimeout(fetchLinkedinResearch(company.linkedinUrl, companyName), LINKEDIN_TIMEOUT_MS, 'LinkedIn'),
-    withTimeout(fetchWebsiteResearch(company.websiteUrl, companyName), WEBSITE_TIMEOUT_MS, 'Website'),
-    withTimeout(fetchPublicSources(companyName), PUBLIC_TIMEOUT_MS, 'PublicSources'),
-  ]);
+  let linkedin: ICompanyResearch['linkedin'];
+  let website: ICompanyResearch['website'];
+  let publicSources: ICompanyResearch['publicSources'];
 
-  const linkedin =
-    linkedinRes.status === 'fulfilled' ? linkedinRes.value : emptyLinkedin('failed');
-  const website =
-    websiteRes.status === 'fulfilled' ? websiteRes.value : emptyWebsite('failed');
-  const publicSources =
-    publicRes.status === 'fulfilled' ? publicRes.value : emptyPublic('failed');
+  if (onProgress) {
+    // Sequential, with progress events. Slower wall-clock but the UI can
+    // show each source as a real, time-spending step.
+    await onProgress({ source: 'linkedin', phase: 'start' });
+    linkedin = await withTimeout(
+      fetchLinkedinResearch(company.linkedinUrl, companyName),
+      LINKEDIN_TIMEOUT_MS,
+      'LinkedIn',
+    ).catch(() => emptyLinkedin('failed'));
+    await onProgress({ source: 'linkedin', phase: 'done', result: linkedin });
+
+    await onProgress({ source: 'website', phase: 'start' });
+    website = await withTimeout(
+      fetchWebsiteResearch(company.websiteUrl, companyName),
+      WEBSITE_TIMEOUT_MS,
+      'Website',
+    ).catch(() => emptyWebsite('failed'));
+    await onProgress({ source: 'website', phase: 'done', result: website });
+
+    // Freshness only makes sense once we know the website exists.
+    await onProgress({ source: 'freshness', phase: 'start' });
+    if (website.status === 'success' && company.websiteUrl) {
+      const f = await checkWebsiteFreshness(company.websiteUrl);
+      website.freshness = f.freshness;
+      website.lastModified = f.lastModified;
+      website.copyrightYear = f.copyrightYear;
+      website.freshnessSignals = f.signals;
+    }
+    await onProgress({ source: 'freshness', phase: 'done', result: website });
+
+    await onProgress({ source: 'public', phase: 'start' });
+    publicSources = await withTimeout(
+      fetchPublicSources(companyName),
+      PUBLIC_TIMEOUT_MS,
+      'PublicSources',
+    ).catch(() => emptyPublic('failed'));
+    await onProgress({ source: 'public', phase: 'done', result: publicSources });
+  } else {
+    // Parallel, fire-and-forget warm-up path (no progress consumer).
+    const [linkedinRes, websiteRes, publicRes] = await Promise.allSettled([
+      withTimeout(fetchLinkedinResearch(company.linkedinUrl, companyName), LINKEDIN_TIMEOUT_MS, 'LinkedIn'),
+      withTimeout(fetchWebsiteResearch(company.websiteUrl, companyName), WEBSITE_TIMEOUT_MS, 'Website'),
+      withTimeout(fetchPublicSources(companyName), PUBLIC_TIMEOUT_MS, 'PublicSources'),
+    ]);
+    linkedin = linkedinRes.status === 'fulfilled' ? linkedinRes.value : emptyLinkedin('failed');
+    website = websiteRes.status === 'fulfilled' ? websiteRes.value : emptyWebsite('failed');
+    publicSources = publicRes.status === 'fulfilled' ? publicRes.value : emptyPublic('failed');
+
+    if (website.status === 'success' && company.websiteUrl) {
+      const f = await checkWebsiteFreshness(company.websiteUrl).catch(() => null);
+      if (f) {
+        website.freshness = f.freshness;
+        website.lastModified = f.lastModified;
+        website.copyrightYear = f.copyrightYear;
+        website.freshnessSignals = f.signals;
+      }
+    }
+  }
 
   company.research.linkedin = linkedin;
   company.research.website = website;

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Check, Copy, Send } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { onboardingAPI } from '../api/onboarding';
 import Card from '../components/Card';
 
@@ -18,7 +18,6 @@ interface SessionSummary {
 export default function OnboardingCompletePage() {
   const { id } = useParams<{ id: string }>();
   const [summary, setSummary] = useState<SessionSummary | null>(null);
-  const [invites, setInvites] = useState<Array<{ email: string; inviteLink: string }>>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -56,7 +55,6 @@ export default function OnboardingCompletePage() {
           : 0,
         painSignals,
       });
-      setInvites(data.reps?.map((r: any) => ({ email: r.email, inviteLink: r.inviteLink })) || []);
     });
   }, [id]);
 
@@ -111,22 +109,6 @@ export default function OnboardingCompletePage() {
             </div>
           )}
 
-          {invites.length > 0 && (
-            <div className="mp-rep-invites">
-              <div className="mp-rep-invites__head">
-                <div className="mp-overline">Rep invite links</div>
-                <p className="mp-meta" style={{ margin: 0 }}>
-                  Send these to your reps — one click signs them in. Links never expire.
-                </p>
-              </div>
-              <div className="mp-rep-invites__list">
-                {invites.map((i) => (
-                  <RepInviteCard key={i.email} email={i.email} inviteLink={i.inviteLink} />
-                ))}
-              </div>
-            </div>
-          )}
-
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
             <Link to="/app/target-profile">
               <button className="mp-btn mp-btn--primary mp-btn--lg">Open MerakiPeople →</button>
@@ -145,78 +127,6 @@ function Stat({ value, label }: { value: number | string; label: string }) {
         {value}
       </div>
       <div className="mp-meta" style={{ marginTop: 4 }}>{label}</div>
-    </div>
-  );
-}
-
-function RepInviteCard({ email, inviteLink }: { email: string; inviteLink: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(inviteLink);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback for browsers without clipboard API — select the URL field
-      const el = document.getElementById(`invite-url-${email}`) as HTMLInputElement | null;
-      if (el) {
-        el.select();
-        document.execCommand('copy');
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      }
-    }
-  };
-
-  const subject = encodeURIComponent("Your invite to start using your AI sales team");
-  const body = encodeURIComponent(
-    `Hi,\n\nYou've been invited to join the team. Use this link to sign in:\n\n${inviteLink}\n\nIt only takes a minute — you'll set up your CV next, and your morning playbook will be waiting.\n\nWelcome aboard!`
-  );
-  const mailtoLink = `mailto:${email}?subject=${subject}&body=${body}`;
-
-  return (
-    <div className="mp-rep-invite">
-      <div className="mp-rep-invite__top">
-        <div className="mp-rep-invite__avatar">
-          {email.slice(0, 1).toUpperCase()}
-        </div>
-        <div className="mp-rep-invite__email" title={email}>{email}</div>
-      </div>
-
-      <div className="mp-rep-invite__url-row">
-        <input
-          id={`invite-url-${email}`}
-          type="text"
-          value={inviteLink}
-          readOnly
-          className="mp-rep-invite__url"
-          onClick={(e) => (e.target as HTMLInputElement).select()}
-        />
-        <button
-          type="button"
-          className="mp-rep-invite__btn"
-          onClick={handleCopy}
-          aria-label="Copy invite link"
-        >
-          {copied ? (
-            <>
-              <Check size={14} /> Copied
-            </>
-          ) : (
-            <>
-              <Copy size={14} /> Copy
-            </>
-          )}
-        </button>
-        <a
-          href={mailtoLink}
-          className="mp-rep-invite__btn mp-rep-invite__btn--primary"
-          aria-label={`Email ${email}`}
-        >
-          <Send size={14} /> Email
-        </a>
-      </div>
     </div>
   );
 }

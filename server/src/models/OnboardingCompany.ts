@@ -87,6 +87,13 @@ export interface ICompanyResearch {
     toneSignals: string[];
     competitorSignals: string[];
     fetchedAt: Date | null;
+    // Freshness signals — used by the docs flow to decide whether the website
+    // is current enough to auto-generate a brochure from it, or whether to
+    // ask the founder to upload one.
+    freshness: 'fresh' | 'stale' | 'unknown';
+    lastModified: Date | null;
+    copyrightYear: number | null;
+    freshnessSignals: string[];
   };
   publicSources: {
     status: 'pending' | 'success' | 'partial' | 'failed' | 'skipped' | 'not_found';
@@ -175,6 +182,10 @@ const OnboardingCompanySchema = new Schema<IOnboardingCompany>(
         toneSignals: [{ type: String }],
         competitorSignals: [{ type: String }],
         fetchedAt: { type: Date, default: null },
+        freshness: { type: String, enum: ['fresh', 'stale', 'unknown'], default: 'unknown' },
+        lastModified: { type: Date, default: null },
+        copyrightYear: { type: Number, default: null },
+        freshnessSignals: [{ type: String }],
       },
       publicSources: {
         status: { type: String, enum: ['pending', 'success', 'partial', 'failed', 'skipped', 'not_found'], default: 'pending' },

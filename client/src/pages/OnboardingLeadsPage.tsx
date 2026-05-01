@@ -144,21 +144,21 @@ export default function OnboardingLeadsPage() {
         {phase === 'searching' ? (
           <>
             <div className="mp-text-center" style={{ marginBottom: 24 }}>
-              <h2 className="mp-h2" style={{ margin: 0 }}>Hunting real prospects for you</h2>
+              <h2 className="mp-h2" style={{ margin: 0 }}>Hunting real companies for you</h2>
               <p className="mp-body-sm mp-muted" style={{ marginTop: 6 }}>
-                Real company names + plausible contacts, ranked against your ICP.
+                Real company names and the right person at each — ranked against your ICP. This takes a minute or two; we'll show you what we're doing as we go.
               </p>
             </div>
             {sessionId ? (
               <ThinkingPanel
                 sessionId={sessionId}
-                title="Hunting prospects"
-                subtitle="Claude proposes real firms matching your target profile"
+                title="Finding companies that fit your ICP"
+                subtitle="Working through your customer profile, your geography, and signals of who's ready to buy"
                 onDone={handleSessionDone}
                 onError={(session) => setError(session.errorMessage || 'Lead hunt failed')}
               />
             ) : (
-              <Card padding="lg" className="mp-text-center"><p className="mp-muted">Starting reasoning session…</p></Card>
+              <Card padding="lg" className="mp-text-center"><p className="mp-muted">Warming up the hunt…</p></Card>
             )}
             {error && (
               <Card padding="lg" style={{ marginTop: 16, borderColor: 'var(--mp-error)', background: 'var(--mp-error-bg)' }}>
