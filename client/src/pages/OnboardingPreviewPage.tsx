@@ -152,7 +152,7 @@ export default function OnboardingPreviewPage() {
             Every lead runs through the same 7-stage system.
           </h3>
           <p className="mp-deck-section__lede">
-            Stages 1–4 run on autopilot. Stage 5 is your rep — but they're never alone:
+            Stages 1–4 run on autopilot. Stage 5 is you — and you're never alone:
             Stages 6 + 7 are AI coaching during and after the call, plus simulated practice between calls.
           </p>
 
@@ -361,22 +361,22 @@ const HOW_IT_WORKS = [
     icon: CheckCircle,
     color: '#16A34A',
     title: 'Hand off',
-    tagline: 'Rep takes the call — warm, not cold',
-    body: 'At "Ready", your rep gets a call-prep brief with research + lead history. The lead is already warm; the call feels natural.',
+    tagline: 'You take the call — warm, not cold',
+    body: 'At "Ready", you get a call-prep brief with research + lead history. The lead is already warm; the call feels natural.',
   },
   {
     icon: Headphones,
     color: '#2D5BD9',
     title: 'Coach',
     tagline: 'Real-time + post-call',
-    body: 'AI listens, prompts the rep on objections + next steps live, and grades the call afterward — coaching moments flagged.',
+    body: 'AI listens, prompts you on objections + next steps live, and grades the call afterward — coaching moments flagged.',
   },
   {
     icon: GraduationCap,
     color: '#B5811A',
     title: 'Improve',
     tagline: 'Practice on simulated leads',
-    body: 'Between live calls, reps practice on AI-simulated leads tuned to their actual weak spots. Every session feeds back into the playbook.',
+    body: 'Between live calls, you practice on AI-simulated leads tuned to your actual weak spots. Every session feeds back into the playbook.',
   },
 ];
 
@@ -388,7 +388,7 @@ const BEFORE_AFTER = [
   },
   {
     category: 'Context',
-    before: 'Rep walks in blind — no research, no history',
+    before: 'You walk in blind — no research, no history',
     after: 'Pre-call brief: company research + lead history',
   },
   {
@@ -403,8 +403,8 @@ const BEFORE_AFTER = [
   },
   {
     category: 'Practice',
-    before: 'Reps repeat the same mistake on every call',
-    after: 'AI-simulated leads tuned to each rep\'s weak spots',
+    before: 'You repeat the same mistake on every call',
+    after: 'AI-simulated leads tuned to your actual weak spots',
   },
   {
     category: 'Recovery',
@@ -415,9 +415,9 @@ const BEFORE_AFTER = [
 
 const OUTCOME_METRICS = [
   { value: '100×', color: '#3FB6FF', label: 'Cheaper leads', detail: 'AI-discovered prospects vs. paid list providers' },
-  { value: '6 wks', color: '#9D6BFF', label: 'Rep ramp time', detail: 'New rep productive in 6 weeks vs 6 months' },
+  { value: '6 wks', color: '#9D6BFF', label: 'New hire ramp', detail: 'New hires productive in 6 weeks vs 6 months' },
   { value: '47%', color: '#F4A02E', label: 'Pipeline velocity', detail: 'Faster movement through your funnel stages' },
-  { value: '70%', color: '#16A34A', label: 'Less admin work', detail: 'Reps spend time selling, not data-entry' },
+  { value: '70%', color: '#16A34A', label: 'Less admin work', detail: 'Your team spends time selling, not on data entry' },
 ];
 
 /**
@@ -492,13 +492,13 @@ function buildLeadTimeline(company: Company, lead: Lead): TimelineEvent[] {
     detail: `AI tags the lead as Hot. ${CHANNEL_META[hotChannel].label} message goes out asking for a 15-min call to walk through specifics.`,
   });
 
-  // Day 22 — Rep takes over
+  // Day 22 — you take over
   const readyChannel = firstChannel('ready', 'calling');
   events.push({
     day: 22,
     channel: readyChannel,
     stage: 'ready',
-    title: `Rep handoff — ${CHANNEL_META[readyChannel].label}`,
+    title: `Your turn — ${CHANNEL_META[readyChannel].label}`,
     detail: `Score above your "Ready" threshold. ${lead.contactName} appears in your morning playbook with a full prep brief. You take the meeting.`,
   });
 

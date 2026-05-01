@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { RefreshCw, Upload, AlertTriangle } from 'lucide-react';
+import { RefreshCw, AlertTriangle } from 'lucide-react';
 import { onboardingAPI, OnboardingDoc, OnboardingDocKind } from '../api/onboarding';
 import PhaseProgress from '../components/PhaseProgress';
 import Card from '../components/Card';
@@ -9,29 +9,35 @@ import DocRenderer from '../components/DocRenderer';
 import DocEditor from '../components/DocEditor';
 import DocThinking from '../components/DocThinking';
 import WizardBackLink from '../components/WizardBackLink';
-import CatalogueUploader from '../components/CatalogueUploader';
+import BrochureGate from '../components/BrochureGate';
+import SimpleDocBlocks from '../components/SimpleDocBlocks';
 import { useOnboarding } from '../contexts/OnboardingContext';
 
-const REVIEWABLE_ORDER: OnboardingDocKind[] = ['nurture_strategy', 'scoring_framework', 'brand_guidelines', 'knowledge_base'];
+// Order matters — the founder walks through these top-to-bottom. Product
+// brochure comes first because everything downstream (nurture messaging,
+// brand voice, scoring) builds on a clear product story. We hide the lead
+// scoring framework here entirely (it's auto-generated in the background;
+// founders don't review it during onboarding).
+const REVIEWABLE_ORDER: OnboardingDocKind[] = ['knowledge_base', 'nurture_strategy', 'brand_guidelines'];
 
 const DOC_TITLES: Record<OnboardingDocKind, string> = {
-  nurture_strategy: 'Lead nurture playbook',
+  nurture_strategy: 'Your nurture flow',
   scoring_framework: 'Lead scoring rules',
-  brand_guidelines: 'Brand voice',
+  brand_guidelines: 'Your brand voice',
   target_profile: 'Target profile',
-  knowledge_base: 'Product knowledge',
+  knowledge_base: 'Your product brochure',
 };
 
 const DOC_SUBTITLES: Record<OnboardingDocKind, string> = {
   nurture_strategy:
-    'The journey every lead follows — from first touch to your rep\'s calendar. Your AI handles the early stages, your rep takes the final meeting.',
+    "How your AI moves a lead from cold to call-ready — the channels, the cadence, when you take over.",
   scoring_framework:
-    'The rules that decide which leads are worth pursuing first. Every lead scores 0–100 across four factors; the score decides their stage.',
+    'The rules that decide which leads to pursue first.',
   brand_guidelines:
-    'The tone, phrasing, and do/don\'t rules your AI follows when writing to leads — so every message sounds like you.',
-  target_profile: 'Who you\'re selling to — locked in Phase A.',
+    "How your AI writes — so every message sounds like you, not a bot.",
+  target_profile: "Who you're selling to — locked in Phase A.",
   knowledge_base:
-    'Upload your real product catalogue (brochure / deck / one-pager) so the AI uses your actual source material — not a generated guess.',
+    "What your AI tells leads about your product. We can build this from your website, or you can upload a brochure.",
 };
 
 function getDetectedProducts(doc: OnboardingDoc, company: any): string[] {
@@ -59,14 +65,17 @@ export default function OnboardingDocsPage() {
   const { company } = useOnboarding();
   const [docs, setDocs] = useState<OnboardingDoc[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeKind, setActiveKind] = useState<OnboardingDocKind>('nurture_strategy');
+  const [activeKind, setActiveKind] = useState<OnboardingDocKind>('knowledge_base');
   const [draftContent, setDraftContent] = useState<any>(null);
   const [editing, setEditing] = useState(false);
   const [action, setAction] = useState<'idle' | 'approving' | 'skipping' | 'regenerating' | 'uploading' | 'regenerating-all'>('idle');
   const [error, setError] = useState('');
   // Sweep progress for "Regenerate all stale": null = not running.
   const [sweep, setSweep] = useState<{ done: number; total: number; current: string } | null>(null);
-  const nurtureFileRef = useRef<HTMLInputElement>(null);
+  // Founder's answer to "is your website current?" — null = not asked yet.
+  // Smart-defaulted from research.website.freshness when the brochure step
+  // first renders (see effect below).
+  const [websiteIsCurrent, setWebsiteIsCurrent] = useState<boolean | null>(null);
 
   const loadDocs = async () => {
     if (!id) return;
@@ -117,6 +126,15 @@ export default function OnboardingDocsPage() {
     if (activeDoc) setDraftContent(activeDoc.content);
     setEditing(false);
   }, [activeDoc?._id]);
+
+  // Smart-default the "is your website current?" answer using the freshness
+  // signal we collected during ICP research. Founder can still flip it.
+  useEffect(() => {
+    if (websiteIsCurrent !== null) return;
+    const f = (company as any)?.research?.website?.freshness;
+    if (f === 'fresh') setWebsiteIsCurrent(true);
+    // For 'stale' or 'unknown' we leave it null and let the gate ask explicitly.
+  }, [company, websiteIsCurrent]);
 
   const handleApprove = async () => {
     if (!id || !activeDoc) return;
@@ -212,15 +230,19 @@ export default function OnboardingDocsPage() {
     }
   };
 
-  const handleNurtureUpload = async (file: File) => {
+  const handleBrochureUpload = async (file: File) => {
     if (!id) return;
     setAction('uploading');
     setError('');
     try {
-      const { data } = await onboardingAPI.uploadNurturePlaybook(id, file);
-      setDocs((prev) => prev.map((d) => (d._id === data.doc._id ? data.doc : d)));
+      const { data } = await onboardingAPI.uploadCatalogue(id, file);
+      // The catalogue endpoint returns the updated knowledge_base doc.
+      const updated = data.doc || data.knowledgeBaseDoc;
+      if (updated) {
+        setDocs((prev) => prev.map((d) => (d._id === updated._id ? updated : d)));
+      }
     } catch (e: any) {
-      setError(e.response?.data?.error || 'Could not parse the playbook.');
+      setError(e.response?.data?.error || 'Could not parse the brochure.');
     } finally {
       setAction('idle');
     }
@@ -347,36 +369,11 @@ export default function OnboardingDocsPage() {
                     <p className="mp-body-sm mp-muted" style={{ margin: '4px 0 0', lineHeight: 'var(--lh-snug)' }}>
                       {DOC_SUBTITLES[activeDoc.kind]}
                     </p>
-                    <div className="mp-meta" style={{ marginTop: 6 }}>
-                      Generated in {activeDoc.generationIterations} iteration{activeDoc.generationIterations === 1 ? '' : 's'} · v{activeDoc.currentVersion}
-                    </div>
                   </div>
+                  {/* Regenerate is the only header-level action — brochure has its
+                      own controls inside BrochureGate; nurture/brand show a
+                      simple block summary that the founder can edit if needed. */}
                   <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                    {activeDoc.kind === 'nurture_strategy' && (
-                      <>
-                        <input
-                          ref={nurtureFileRef}
-                          type="file"
-                          accept=".pdf,.docx,.txt,.md,.markdown"
-                          style={{ display: 'none' }}
-                          onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            if (f) handleNurtureUpload(f);
-                            e.target.value = '';
-                          }}
-                        />
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => nurtureFileRef.current?.click()}
-                          disabled={action !== 'idle'}
-                          title="Upload an existing playbook (PDF / DOCX) and we'll convert it to this format"
-                        >
-                          <Upload size={14} strokeWidth={2} />
-                          {action === 'uploading' ? 'Parsing…' : 'Upload existing playbook'}
-                        </Button>
-                      </>
-                    )}
                     <Button variant="ghost" size="sm" onClick={handleRegenerate} disabled={action !== 'idle'}>
                       <RefreshCw size={14} strokeWidth={2} /> Regenerate
                     </Button>
@@ -384,23 +381,37 @@ export default function OnboardingDocsPage() {
                 </header>
 
                 <div className="mp-doc-viewer" style={{ padding: 20 }}>
-                  {/* Knowledge base gets the upload-first treatment */}
-                  {activeDoc.kind === 'knowledge_base' && id && (
-                    <CatalogueUploader
-                      companyId={id}
-                      uploaded={activeDoc.content?.uploadedCatalogue || null}
+                  {activeDoc.kind === 'knowledge_base' && id ? (
+                    <BrochureGate
+                      websiteUrl={(company as any)?.websiteUrl || ''}
                       detectedProducts={getDetectedProducts(activeDoc, company)}
-                      onUploaded={(updatedDoc) => {
-                        setDocs((prev) => prev.map((d) => (d._id === updatedDoc._id ? updatedDoc : d)));
+                      freshness={(company as any)?.research?.website || null}
+                      websiteIsCurrent={websiteIsCurrent}
+                      onAnswerWebsiteCurrent={(current) => {
+                        setWebsiteIsCurrent(current);
+                        // If they answered "yes, build from website" and there's
+                        // nothing yet, kick a regen so the AI generates from
+                        // the website-derived data.
+                        if (current && !activeDoc.content?.uploadedCatalogue) {
+                          const products = getDetectedProducts(activeDoc, company);
+                          if (products.length === 0) handleRegenerate();
+                        }
                       }}
+                      onUpload={handleBrochureUpload}
+                      uploaded={activeDoc.content?.uploadedCatalogue || null}
+                      onRegenerate={handleRegenerate}
+                      uploading={action === 'uploading'}
+                      regenerating={action === 'regenerating'}
                     />
-                  )}
-
-                  {editing ? (
+                  ) : editing ? (
                     <DocEditor doc={activeDoc} value={draftContent} onChange={setDraftContent} />
-                  ) : activeDoc.kind !== 'knowledge_base' ? (
+                  ) : (activeDoc.kind === 'nurture_strategy' || activeDoc.kind === 'brand_guidelines') ? (
+                    /* Block summary — the rich DocRenderer is reserved for the
+                       post-launch app pages where the founder reviews details. */
+                    <SimpleDocBlocks doc={activeDoc} />
+                  ) : (
                     <DocRenderer doc={activeDoc} />
-                  ) : null}
+                  )}
                 </div>
 
                 {error && <div style={{ padding: '0 20px' }}><p className="mp-help mp-help--error">{error}</p></div>}

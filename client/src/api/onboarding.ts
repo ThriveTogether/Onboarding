@@ -136,6 +136,8 @@ export const onboardingAPI = {
     api.patch(`/onboarding/leads/${leadId}/feedback`, { feedback, note }),
   saveIcpNote: (id: string, note: string) =>
     api.post(`/onboarding/company/${id}/icp-note`, { note }),
+  saveCurrentCustomers: (id: string, customers: string[]) =>
+    api.post(`/onboarding/company/${id}/current-customers`, { customers }),
   draftMessage: (
     id: string,
     payload: {

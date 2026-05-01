@@ -455,6 +455,24 @@ router.post('/company/:id/icp-note', async (req: Request, res: Response) => {
   return res.json({ company });
 });
 
+// Current-customer names captured on A3 (skippable). Up to 5 trimmed,
+// non-empty strings — the AI uses these as warm-handoff signal + as a
+// grounding example of "who actually buys today".
+router.post('/company/:id/current-customers', async (req: Request, res: Response) => {
+  const { id } = req.params as { id: string };
+  const { customers } = req.body as { customers: string[] };
+  const cleaned = Array.isArray(customers)
+    ? customers.map((s) => (s || '').trim()).filter(Boolean).slice(0, 5)
+    : [];
+  const company = await OnboardingCompany.findByIdAndUpdate(
+    id,
+    { currentCustomers: cleaned },
+    { new: true }
+  );
+  if (!company) return res.status(404).json({ error: 'Company not found' });
+  return res.json({ company });
+});
+
 // ---------- Phase B: per-channel message templates ----------
 // POST /company/:id/draft-message — Claude drafts a message given controls.
 // Body: { stage, channel, length, tone, formality, exampleLeadId? }

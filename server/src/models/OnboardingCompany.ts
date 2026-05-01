@@ -121,6 +121,9 @@ export interface IOnboardingCompany extends Document {
   successMetric: string;
   icpFeedbackNote: string;
   icpFeedbackAt: Date | null;
+  /** Founder-named current customers — the AI uses these as warm-handoff
+   *  signal AND as a grounding example of "who actually buys today". */
+  currentCustomers: string[];
   messageTemplates: IMessageTemplate[];
   preferredChannels: string[];
   channelStrategy: IChannelStrategy;
@@ -228,6 +231,7 @@ const OnboardingCompanySchema = new Schema<IOnboardingCompany>(
     successMetric: { type: String, default: '' },
     icpFeedbackNote: { type: String, default: '' },
     icpFeedbackAt: { type: Date, default: null },
+    currentCustomers: [{ type: String }],
     messageTemplates: [
       {
         stage: { type: String, enum: ['cold', 'warming', 'hot'], required: true },
