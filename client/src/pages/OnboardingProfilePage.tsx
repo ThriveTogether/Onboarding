@@ -33,12 +33,17 @@ export default function OnboardingProfilePage() {
       .predictProfile(id)
       .then(({ data }) => {
         if (Array.isArray(data.prediction?.candidates) && data.prediction.candidates.length > 0) {
-          setCandidates(data.prediction.candidates);
+          const cands = data.prediction.candidates;
+          setCandidates(cands);
           const preselected = new Set<number>();
-          data.prediction.candidates.forEach((c: TargetProfile, i: number) => {
+          cands.forEach((c: TargetProfile, i: number) => {
             if (c.isSelected) preselected.add(i);
           });
           setSelected(preselected.size > 0 ? preselected : new Set([0]));
+          // Cached path — flag template-only fallbacks so the founder knows.
+          if (cands.every((c: TargetProfile) => /Fallback from vertical template defaults/i.test(c.variantThesis || ''))) {
+            setAiFallbackReason("AI didn't return differentiated variants — these are template defaults.");
+          }
         } else if (data.sessionId) {
           setSessionId(data.sessionId);
         } else if (data.prediction?.geography) {
@@ -49,6 +54,11 @@ export default function OnboardingProfilePage() {
       .catch((e) => setError(e.response?.data?.error || 'Prediction failed'));
   }, [id]);
 
+  // True when the AI step errored OR the candidates returned all came from
+  // template defaults (variantThesis is the fallback string). Surfaces a
+  // banner so the founder isn't silently shown low-quality cards.
+  const [aiFallbackReason, setAiFallbackReason] = useState<string>('');
+
   const handleSessionDone = (session: ReasoningSession) => {
     const result = session.result?.candidates as TargetProfile[] | undefined;
     if (Array.isArray(result) && result.length > 0) {
@@ -56,6 +66,17 @@ export default function OnboardingProfilePage() {
       const preselected = new Set<number>();
       result.forEach((c, i) => { if (c.isSelected) preselected.add(i); });
       setSelected(preselected.size > 0 ? preselected : new Set([0]));
+    }
+    // Surface the AI failure to the founder if it happened. The reasoning
+    // step's output has the actual error message (timeout / parse / rate limit).
+    const draftStep = session.steps.find((s) => s.label === 'Draft target profile with Claude');
+    if (draftStep?.status === 'error') {
+      setAiFallbackReason(draftStep.output || 'AI step failed — using template defaults.');
+    } else if (
+      Array.isArray(result) &&
+      result.every((c) => /Fallback from vertical template defaults/i.test(c.variantThesis || ''))
+    ) {
+      setAiFallbackReason("AI didn't return differentiated variants — these are template defaults.");
     }
   };
 
@@ -184,6 +205,33 @@ export default function OnboardingProfilePage() {
             size, right pain). Each card below is one such slice.
           </div>
         </div>
+
+        {/* Persistent warning when the AI step failed or returned only template
+            defaults. The founder needs to know they're looking at fallback,
+            not a real prediction — otherwise they'll lock low-quality ICPs. */}
+        {aiFallbackReason && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 12,
+              padding: '12px 14px',
+              marginBottom: 16,
+              background: 'rgba(252, 191, 73, 0.08)',
+              border: '1px solid rgba(252, 191, 73, 0.4)',
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--fg-1)',
+            }}
+          >
+            <Info size={16} style={{ color: '#c47a07', flexShrink: 0, marginTop: 2 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <strong>Heads up — these cards are template defaults.</strong>
+              <p className="mp-body-sm" style={{ margin: '4px 0 0' }}>
+                {aiFallbackReason} Tweak your industry or website on the previous step and re-run, or click <strong>Use my own ICP</strong> to enter your own.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Top-right action: bring your own ICP */}
         <div className="mp-row" style={{ justifyContent: 'flex-end', marginBottom: 12 }}>
