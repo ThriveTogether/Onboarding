@@ -8,6 +8,8 @@ import { connectDB } from './config/db';
 import onboardingRoutes from './routes/onboarding.routes';
 import authRoutes from './routes/auth.routes';
 import promptTemplatesRoutes from './routes/promptTemplates.routes';
+import { isAIAvailable } from './services/ai/claudeClient';
+import { isSerperAvailable } from './services/ai/serperClient';
 
 const app = express();
 const startedAt = Date.now();
@@ -35,6 +37,11 @@ const healthHandler = (_req: express.Request, res: express.Response) => {
     status: dbOk ? 'ok' : 'degraded',
     service: 'meraki-onboarding-api',
     db: ['disconnected', 'connected', 'connecting', 'disconnecting'][dbState] ?? 'unknown',
+    // Surface whether AI / Serper keys are loaded — when these are false on
+    // prod, the ICP predictor falls straight to template defaults and the
+    // founder sees identical "Fallback from vertical template" cards.
+    ai: isAIAvailable(),
+    serper: isSerperAvailable(),
     uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
     timestamp: new Date().toISOString(),
   });
