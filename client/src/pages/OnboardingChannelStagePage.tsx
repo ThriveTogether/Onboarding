@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Mail, Linkedin, MessageCircle, Phone, Snowflake, Zap, Flame, CheckCircle, Star } from 'lucide-react';
+import { Mail, Linkedin, MessageCircle, Phone, Snowflake, Zap, Flame, CheckCircle, Star, Settings2, ChevronDown, ChevronUp } from 'lucide-react';
 import { onboardingAPI } from '../api/onboarding';
 import PhaseProgress from '../components/PhaseProgress';
 import Card from '../components/Card';
@@ -26,12 +26,58 @@ interface StageThresholds {
   ready: [number, number];
 }
 
-const STAGES: { key: Stage; label: string; sub: string; icon: any; color: string }[] = [
-  { key: 'cold', label: 'Cold', sub: 'AI starts the conversation', icon: Snowflake, color: '#3FB6FF' },
-  { key: 'warming', label: 'Warming', sub: 'They opened / clicked / glanced', icon: Zap, color: '#9D6BFF' },
-  { key: 'warm', label: 'Warm', sub: 'Active replies, real interest', icon: Star, color: '#F4A02E' },
-  { key: 'hot', label: 'Hot', sub: 'Pricing / timeline questions', icon: Flame, color: '#FF6F61' },
-  { key: 'ready', label: 'Ready', sub: 'Rep takes the meeting', icon: CheckCircle, color: '#16A34A' },
+// Each stage has a plain-English signal — what it FEELS like in the founder's
+// inbox/CRM — rather than asking them to define it numerically. Score ranges
+// are pre-filled with sensible defaults; the "Adjust" expander shows numbers
+// only for founders who really want to tune them.
+const STAGES: {
+  key: Stage;
+  label: string;
+  sub: string;
+  signal: string;
+  icon: any;
+  color: string;
+}[] = [
+  {
+    key: 'cold',
+    label: 'Cold',
+    sub: "Haven't heard from them yet",
+    signal: 'Your AI starts the conversation. No reply yet.',
+    icon: Snowflake,
+    color: '#3FB6FF',
+  },
+  {
+    key: 'warming',
+    label: 'Warming',
+    sub: 'They opened or clicked',
+    signal: 'They opened, clicked a link, or glanced — but no real reply.',
+    icon: Zap,
+    color: '#9D6BFF',
+  },
+  {
+    key: 'warm',
+    label: 'Warm',
+    sub: 'Replying with real interest',
+    signal: 'A real reply with a real question. They want to know more.',
+    icon: Star,
+    color: '#F4A02E',
+  },
+  {
+    key: 'hot',
+    label: 'Hot',
+    sub: 'Pricing or timeline talk',
+    signal: 'Asking about pricing, timelines, or who else is involved.',
+    icon: Flame,
+    color: '#FF6F61',
+  },
+  {
+    key: 'ready',
+    label: 'Ready',
+    sub: 'Time to call',
+    signal: "Time on your calendar. You're closing this one.",
+    icon: CheckCircle,
+    color: '#16A34A',
+  },
 ];
 
 const CHANNELS: { key: Channel; label: string; icon: any; help: string }[] = [
@@ -64,6 +110,7 @@ export default function OnboardingChannelStagePage() {
   const [thresholds, setThresholds] = useState<StageThresholds>(DEFAULT_THRESHOLDS);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Hydrate from server: channelStrategy + stageThresholds saved already, OR
   // pull preferredChannels from messaging step as a sensible default.
@@ -130,7 +177,7 @@ export default function OnboardingChannelStagePage() {
   };
 
   const validate = (): string | null => {
-    // Every stage needs at least one channel except 'ready' (rep takeover)
+    // Every stage needs at least one channel except 'ready' (you take over)
     for (const s of STAGES) {
       if (s.key === 'ready') continue;
       if ((strategy[s.key] || []).length === 0) {
@@ -180,90 +227,136 @@ export default function OnboardingChannelStagePage() {
         <div className="mp-text-center" style={{ marginBottom: 16 }}>
           <div className="mp-brand-header__overline">Phase B — Make my AI smart</div>
           <h2 className="mp-h2" style={{ margin: '6px 0 4px' }}>
-            Set the funnel — channels + score ranges
+            How does a lead heat up for you?
           </h2>
           <p className="mp-body-sm mp-muted">
-            Every lead lives in one of five stages. Pick which channels your AI should use at each stage, and
-            the score range that triggers each move. You can always tweak these later from Settings.
+            Every lead moves through these five stages. We've set sensible defaults — just pick the channels you want your AI to use at each stage. Score ranges are tuned for you (you can adjust them if you want).
           </p>
         </div>
 
-        <Card padding="lg" style={{ marginBottom: 16 }}>
-          <div className="mp-stage-table">
-            {/* Header row */}
-            <div className="mp-stage-table__head">
-              <div>Stage</div>
-              <div>Score range</div>
-              <div>Channels (multi-select)</div>
-            </div>
-
-            {STAGES.map((s) => {
+        {/* Visual lifecycle bar — five segments left-to-right showing the journey */}
+        <div className="mp-lead-lifecycle" style={{ marginBottom: 16 }}>
+          <div className="mp-lead-lifecycle__bar">
+            {STAGES.map((s, i) => {
               const Icon = s.icon;
-              const range = thresholds[s.key];
-              const channels = strategy[s.key] || [];
               return (
-                <div key={s.key} className="mp-stage-table__row">
-                  <div className="mp-stage-table__cell">
-                    <div className="mp-stage-table__stage">
-                      <div
-                        className="mp-stage-table__icon"
-                        style={{ background: s.color, color: '#fff' }}
-                      >
-                        <Icon size={14} strokeWidth={2.5} />
-                      </div>
-                      <div>
-                        <div className="mp-stage-table__label">{s.label}</div>
-                        <div className="mp-stage-table__sub">{s.sub}</div>
-                      </div>
-                    </div>
+                <div
+                  key={s.key}
+                  className="mp-lead-lifecycle__seg"
+                  style={{ background: s.color }}
+                >
+                  <div className="mp-lead-lifecycle__seg-head">
+                    <Icon size={14} strokeWidth={2.5} color="#fff" />
+                    <span>{s.label}</span>
                   </div>
-
-                  <div className="mp-stage-table__cell">
-                    <div className="mp-stage-range">
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={range[0]}
-                        onChange={(e) => updateThreshold(s.key, 0, Number(e.target.value))}
-                        className="mp-input mp-stage-range__input"
-                      />
-                      <span className="mp-stage-range__sep">to</span>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={range[1]}
-                        onChange={(e) => updateThreshold(s.key, 1, Number(e.target.value))}
-                        className="mp-input mp-stage-range__input"
-                      />
-                      <span className="mp-meta" style={{ marginLeft: 6 }}>/ 100</span>
-                    </div>
-                  </div>
-
-                  <div className="mp-stage-table__cell">
-                    <div className="mp-stage-channels">
-                      {CHANNELS.map((c) => {
-                        const Cicon = c.icon;
-                        const active = channels.includes(c.key);
-                        return (
-                          <button
-                            key={c.key}
-                            type="button"
-                            onClick={() => toggleChannel(s.key, c.key)}
-                            className={`mp-stage-chip ${active ? 'mp-stage-chip--active' : ''}`}
-                            title={c.help}
-                          >
-                            <Cicon size={12} /> {c.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+                  {i < STAGES.length - 1 && <div className="mp-lead-lifecycle__arrow" />}
                 </div>
               );
             })}
           </div>
+        </div>
+
+        {/* Per-stage cards — channels only by default (the engaging part). Score
+            ranges live behind the "Adjust thresholds" expander so the founder
+            isn't forced to think in 0–100. */}
+        <div className="mp-stage-cards" style={{ marginBottom: 16 }}>
+          {STAGES.map((s) => {
+            const Icon = s.icon;
+            const channels = strategy[s.key] || [];
+            return (
+              <Card key={s.key} padding="md" className="mp-stage-card">
+                <div className="mp-stage-card__head">
+                  <div className="mp-stage-card__icon" style={{ background: s.color, color: '#fff' }}>
+                    <Icon size={16} strokeWidth={2.5} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="mp-stage-card__label">{s.label}</div>
+                    <div className="mp-stage-card__signal">{s.signal}</div>
+                  </div>
+                </div>
+                <div className="mp-stage-card__channels-row">
+                  <div className="mp-meta" style={{ marginRight: 8 }}>
+                    {s.key === 'ready' ? 'Channel:' : 'Reach via:'}
+                  </div>
+                  <div className="mp-stage-channels">
+                    {CHANNELS.map((c) => {
+                      const Cicon = c.icon;
+                      const active = channels.includes(c.key);
+                      return (
+                        <button
+                          key={c.key}
+                          type="button"
+                          onClick={() => toggleChannel(s.key, c.key)}
+                          className={`mp-stage-chip ${active ? 'mp-stage-chip--active' : ''}`}
+                          title={c.help}
+                        >
+                          <Cicon size={12} /> {c.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* Advanced — score thresholds, hidden by default. */}
+        <Card padding="md" style={{ marginBottom: 16 }}>
+          <button
+            type="button"
+            className="mp-stage-advanced__toggle"
+            onClick={() => setShowAdvanced((v) => !v)}
+            aria-expanded={showAdvanced}
+          >
+            <Settings2 size={14} />
+            <span style={{ flex: 1, textAlign: 'left' }}>
+              Adjust score thresholds <span className="mp-meta">(advanced — defaults work for most founders)</span>
+            </span>
+            {showAdvanced ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+          {showAdvanced && (
+            <div className="mp-stage-advanced__body">
+              <p className="mp-meta" style={{ marginTop: 12, marginBottom: 12 }}>
+                Each lead gets scored 0–100 based on company fit, engagement, intent, and recency. These ranges decide which stage they land in.
+              </p>
+              <div className="mp-stage-advanced__grid">
+                {STAGES.map((s) => {
+                  const range = thresholds[s.key];
+                  return (
+                    <div key={s.key} className="mp-stage-advanced__row">
+                      <div className="mp-stage-advanced__name">
+                        <span
+                          className="mp-stage-advanced__dot"
+                          style={{ background: s.color }}
+                        />
+                        {s.label}
+                      </div>
+                      <div className="mp-stage-range">
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={range[0]}
+                          onChange={(e) => updateThreshold(s.key, 0, Number(e.target.value))}
+                          className="mp-input mp-stage-range__input"
+                        />
+                        <span className="mp-stage-range__sep">to</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={range[1]}
+                          onChange={(e) => updateThreshold(s.key, 1, Number(e.target.value))}
+                          className="mp-input mp-stage-range__input"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </Card>
 
         {error && (

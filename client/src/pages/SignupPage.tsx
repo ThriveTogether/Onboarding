@@ -46,7 +46,7 @@ export default function SignupPage() {
                 type="text"
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
-                placeholder="Zentree Labs"
+                placeholder="Your company name"
                 autoFocus
                 required
               />
@@ -57,7 +57,7 @@ export default function SignupPage() {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Priya Sharma"
+                placeholder="Your full name"
                 autoComplete="name"
               />
             </Field>

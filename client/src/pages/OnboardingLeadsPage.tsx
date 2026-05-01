@@ -47,6 +47,11 @@ export default function OnboardingLeadsPage() {
   const [error, setError] = useState('');
   const [icpNote, setIcpNote] = useState('');
   const [savingNote, setSavingNote] = useState(false);
+  // Three slots so the founder can name up to three current customers. Backend
+  // accepts up to 5; we keep the prompt visually short here. Skippable.
+  const [currentCustomers, setCurrentCustomers] = useState<string[]>(['', '', '']);
+  const [savingCustomers, setSavingCustomers] = useState(false);
+  const [customersSavedAt, setCustomersSavedAt] = useState<number | null>(null);
 
   const startHunt = () => {
     if (!id) return;
@@ -75,9 +80,13 @@ export default function OnboardingLeadsPage() {
         startHunt();
       }
     });
-    // Also load any existing icp note
+    // Also load any existing icp note + current-customer names
     onboardingAPI.state(id).then(({ data }) => {
       if (data.company?.icpFeedbackNote) setIcpNote(data.company.icpFeedbackNote);
+      const cc: string[] = data.company?.currentCustomers || [];
+      if (Array.isArray(cc) && cc.length > 0) {
+        setCurrentCustomers([cc[0] || '', cc[1] || '', cc[2] || '']);
+      }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -124,8 +133,22 @@ export default function OnboardingLeadsPage() {
     }
   };
 
+  const saveCurrentCustomers = async () => {
+    if (!id) return;
+    const cleaned = currentCustomers.map((c) => c.trim()).filter(Boolean);
+    if (cleaned.length === 0) return;
+    setSavingCustomers(true);
+    try {
+      await onboardingAPI.saveCurrentCustomers(id, cleaned);
+      setCustomersSavedAt(Date.now());
+    } finally {
+      setSavingCustomers(false);
+    }
+  };
+
   const goToDocs = async () => {
     if (icpNote.trim()) await saveIcpNote();
+    if (currentCustomers.some((c) => c.trim())) await saveCurrentCustomers();
     navigate(`/onboarding/messaging/${id}`);
   };
 
@@ -144,21 +167,21 @@ export default function OnboardingLeadsPage() {
         {phase === 'searching' ? (
           <>
             <div className="mp-text-center" style={{ marginBottom: 24 }}>
-              <h2 className="mp-h2" style={{ margin: 0 }}>Hunting real prospects for you</h2>
+              <h2 className="mp-h2" style={{ margin: 0 }}>Hunting real companies for you</h2>
               <p className="mp-body-sm mp-muted" style={{ marginTop: 6 }}>
-                Real company names + plausible contacts, ranked against your ICP.
+                Real company names and the right person at each — ranked against your ICP. This takes a minute or two; we'll show you what we're doing as we go.
               </p>
             </div>
             {sessionId ? (
               <ThinkingPanel
                 sessionId={sessionId}
-                title="Hunting prospects"
-                subtitle="Claude proposes real firms matching your target profile"
+                title="Finding companies that fit your ICP"
+                subtitle="Working through your customer profile, your geography, and signals of who's ready to buy"
                 onDone={handleSessionDone}
                 onError={(session) => setError(session.errorMessage || 'Lead hunt failed')}
               />
             ) : (
-              <Card padding="lg" className="mp-text-center"><p className="mp-muted">Starting reasoning session…</p></Card>
+              <Card padding="lg" className="mp-text-center"><p className="mp-muted">Warming up the hunt…</p></Card>
             )}
             {error && (
               <Card padding="lg" style={{ marginTop: 16, borderColor: 'var(--mp-error)', background: 'var(--mp-error-bg)' }}>
@@ -395,6 +418,39 @@ export default function OnboardingLeadsPage() {
                 </span>
               </div>
             )}
+
+            {/* Item 4: ask for current customer names — skippable. Helps the AI
+                ground its messaging in real customers and feeds the
+                warm-handoff signal. */}
+            <Card style={{ marginBottom: 16 }}>
+              <div className="mp-overline" style={{ marginBottom: 4 }}>
+                Help us nail your messaging
+              </div>
+              <p className="mp-body-sm" style={{ margin: '0 0 10px', color: 'var(--fg-1)' }}>
+                Name up to three of your <strong>current customers</strong>. We'll use them as a reference for the tone, the angle, and the kind of buyer your AI should hunt for.
+              </p>
+              <div className="mp-current-customers">
+                {[0, 1, 2].map((i) => (
+                  <input
+                    key={i}
+                    className="mp-input"
+                    placeholder={`Customer ${i + 1} (e.g. Acme Inc)`}
+                    value={currentCustomers[i] || ''}
+                    onChange={(e) => {
+                      const next = [...currentCustomers];
+                      next[i] = e.target.value;
+                      setCurrentCustomers(next);
+                    }}
+                    onBlur={saveCurrentCustomers}
+                  />
+                ))}
+              </div>
+              <p className="mp-meta" style={{ marginTop: 8 }}>
+                Optional — skip if you'd rather come back to it later.
+                {savingCustomers && ' · Saving…'}
+                {!savingCustomers && customersSavedAt && ' · Saved.'}
+              </p>
+            </Card>
 
             <Card style={{ marginBottom: 16 }}>
               <div className="mp-overline" style={{ marginBottom: 8 }}>

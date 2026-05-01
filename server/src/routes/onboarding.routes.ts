@@ -1,14 +1,11 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
-import crypto from 'crypto';
 import mongoose from 'mongoose';
 import { OnboardingCompany } from '../models/OnboardingCompany';
 import { OnboardingDoc, OnboardingDocKind } from '../models/OnboardingDoc';
 import { OnboardingLead } from '../models/OnboardingLead';
-import { RepInvite } from '../models/RepInvite';
 import { FunnelEvent } from '../models/FunnelEvent';
 import { listVerticals } from '../services/onboarding/verticalTemplates';
-import { runMultiSourceResearch } from '../services/onboarding/companyResearch';
 import {
   predictTargetProfile,
   lockTargetProfile,
@@ -43,124 +40,11 @@ const catalogueUpload = multer({
 });
 
 // --------------------------------------------------------------------------
-// Public rep routes (invite-token based, no session required)
-// --------------------------------------------------------------------------
-
-router.get('/rep-invite/:token', async (req: Request, res: Response) => {
-  const { token } = req.params;
-  const invite = await RepInvite.findOne({ inviteToken: token }).populate('companyId');
-  if (!invite) return res.status(404).json({ error: 'Invite not found' });
-  if (invite.expiresAt < new Date()) {
-    invite.status = 'expired';
-    await invite.save();
-    return res.status(410).json({ error: 'Invite expired' });
-  }
-
-  const company = invite.companyId as any;
-  const leadCount = await OnboardingLead.countDocuments({ companyId: company._id });
-  const hotReady = await OnboardingLead.countDocuments({
-    companyId: company._id,
-    stage: { $in: ['hot', 'ready'] },
-  });
-
-  return res.json({
-    invite: {
-      _id: invite._id,
-      email: invite.email,
-      name: invite.name,
-      status: invite.status,
-      cvUploaded: invite.cvUploaded,
-      firstLoginAt: invite.firstLoginAt,
-    },
-    company: { _id: company._id, companyName: company.companyName, vertical: company.vertical },
-    pipeline: { totalLeads: leadCount, hotReady },
-  });
-});
-
-router.post('/rep-invite/:token/login', async (req: Request, res: Response) => {
-  const invite = await RepInvite.findOne({ inviteToken: req.params.token });
-  if (!invite) return res.status(404).json({ error: 'Invite not found' });
-  if (invite.expiresAt < new Date()) return res.status(410).json({ error: 'Invite expired' });
-
-  if (!invite.firstLoginAt) invite.firstLoginAt = new Date();
-  invite.status = 'accepted';
-  await invite.save();
-
-  await trackFunnelEvent('rep_first_login', invite.companyId, {}, invite._id);
-  return res.json({ invite });
-});
-
-router.post('/rep-invite/:token/cv', async (req: Request, res: Response) => {
-  const { fileName } = req.body as { fileName?: string };
-  const invite = await RepInvite.findOne({ inviteToken: req.params.token });
-  if (!invite) return res.status(404).json({ error: 'Invite not found' });
-
-  invite.cvUploaded = true;
-  invite.cvFileName = fileName || '';
-  await invite.save();
-
-  await trackFunnelEvent('rep_cv_uploaded', invite.companyId, { fileName }, invite._id);
-  return res.json({ invite });
-});
-
-router.post('/rep-invite/:token/skip-cv', async (req: Request, res: Response) => {
-  const invite = await RepInvite.findOne({ inviteToken: req.params.token });
-  if (!invite) return res.status(404).json({ error: 'Invite not found' });
-  await trackFunnelEvent('rep_cv_skipped', invite.companyId, {}, invite._id);
-  return res.json({ ok: true });
-});
-
-router.get('/rep-invite/:token/playbook', async (req: Request, res: Response) => {
-  const invite = await RepInvite.findOne({ inviteToken: req.params.token });
-  if (!invite) return res.status(404).json({ error: 'Invite not found' });
-
-  const companyId = invite.companyId;
-  const company = await OnboardingCompany.findById(companyId);
-  if (!company) return res.status(404).json({ error: 'Company not found' });
-
-  const needsYou = await OnboardingLead.find({
-    companyId,
-    stage: { $in: ['hot', 'ready'] },
-  })
-    .sort({ score: -1 })
-    .limit(10);
-
-  const stageCounts = await OnboardingLead.aggregate([
-    { $match: { companyId: new mongoose.Types.ObjectId(companyId.toString()) } },
-    { $group: { _id: '$stage', count: { $sum: 1 } } },
-  ]);
-
-  const systemHandles = {
-    cold: stageCounts.find((s: any) => s._id === 'cold')?.count || 0,
-    warming: stageCounts.find((s: any) => s._id === 'warming')?.count || 0,
-    warm: stageCounts.find((s: any) => s._id === 'warm')?.count || 0,
-  };
-
-  return res.json({
-    rep: { email: invite.email, name: invite.name, cvUploaded: invite.cvUploaded },
-    company: { companyName: company.companyName, vertical: company.vertical },
-    needsYou: needsYou.map((l) => ({
-      _id: l._id,
-      contactName: l.contactName,
-      targetCompany: l.targetCompany,
-      score: l.score,
-      stage: l.stage,
-      industry: l.industry,
-      city: l.city,
-      matchPercent: l.matchPercent,
-    })),
-    systemHandles,
-    yesterday: { calls: 0, avgScore: 0, leadsMoved: { coldToWarm: 0, warmToHot: 0 } },
-  });
-});
-
-// --------------------------------------------------------------------------
-// All routes below require a logged-in founder. The rep routes above are public
-// by design (invite-token based).
+// All routes below require a logged-in founder.
 // --------------------------------------------------------------------------
 router.use(authMiddleware);
 
-/** Returns the authenticated founder's onboarding state — their company + docs + leads + reps. */
+/** Returns the authenticated founder's onboarding state — their company + docs + leads. */
 router.get('/state', async (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const user = await User.findById(userId);
@@ -180,7 +64,6 @@ router.get('/state', async (req: Request, res: Response) => {
 
   const docs = await OnboardingDoc.find({ companyId: company._id }).sort({ kind: 1 });
   const leadCount = await OnboardingLead.countDocuments({ companyId: company._id });
-  const reps = await RepInvite.find({ companyId: company._id });
   const resumeUrl = computeResumeUrl(company, docs, leadCount);
 
   return res.json({
@@ -188,14 +71,6 @@ router.get('/state', async (req: Request, res: Response) => {
     docs,
     leadCount,
     resumeUrl,
-    reps: reps.map((r) => ({
-      _id: r._id,
-      email: r.email,
-      name: r.name,
-      status: r.status,
-      cvUploaded: r.cvUploaded,
-      inviteLink: buildInviteLink(req, r.inviteToken),
-    })),
   });
 });
 
@@ -242,7 +117,6 @@ function computeResumeUrl(company: any, docs: any[], leadCount: number): string 
   // B6: preview — show before launch (skip if previously seen)
   if (!company.previewSeenAt) return `/onboarding/preview/${id}`;
 
-  // B7: launch (invite reps, hit go)
   return `/onboarding/launch/${id}`;
 }
 
@@ -330,9 +204,9 @@ router.post('/company', async (req: Request, res: Response) => {
 
   await trackFunnelEvent('a1_submitted', company._id, { vertical });
 
-  runMultiSourceResearch(company._id).catch((e) =>
-    console.error('[onboarding] research failed', e)
-  );
+  // Note: research is no longer eagerly pre-fetched here. It now runs inside
+  // the predictTargetProfile reasoning session, so the founder sees each
+  // source as a live, time-spending step rather than a flash of "done".
 
   return res.status(201).json({ company });
 });
@@ -359,10 +233,8 @@ router.post('/company/:id/predict-profile', async (req: Request, res: Response) 
     });
   }
 
-  const pending =
-    company.research.linkedin.status === 'pending' ||
-    company.research.website.status === 'pending';
-  if (pending) await runMultiSourceResearch(company._id);
+  // Research now runs inside the predictTargetProfile session — no pre-fetch
+  // here. The session emits live steps as each source is queried.
 
   // Dedupe: if an active prediction session already exists for this company,
   // reuse it rather than firing a second one (which would race on the save).
@@ -577,6 +449,24 @@ router.post('/company/:id/icp-note', async (req: Request, res: Response) => {
   const company = await OnboardingCompany.findByIdAndUpdate(
     id,
     { icpFeedbackNote: (note || '').trim(), icpFeedbackAt: new Date() },
+    { new: true }
+  );
+  if (!company) return res.status(404).json({ error: 'Company not found' });
+  return res.json({ company });
+});
+
+// Current-customer names captured on A3 (skippable). Up to 5 trimmed,
+// non-empty strings — the AI uses these as warm-handoff signal + as a
+// grounding example of "who actually buys today".
+router.post('/company/:id/current-customers', async (req: Request, res: Response) => {
+  const { id } = req.params as { id: string };
+  const { customers } = req.body as { customers: string[] };
+  const cleaned = Array.isArray(customers)
+    ? customers.map((s) => (s || '').trim()).filter(Boolean).slice(0, 5)
+    : [];
+  const company = await OnboardingCompany.findByIdAndUpdate(
+    id,
+    { currentCustomers: cleaned },
     { new: true }
   );
   if (!company) return res.status(404).json({ error: 'Company not found' });
@@ -1022,7 +912,7 @@ router.post('/company/:id/docs/:kind/skip', async (req: Request, res: Response) 
   return res.json({ doc });
 });
 
-// ---------- Feature 5: Success metric + rep invite (B4) ----------
+// ---------- Feature 5: Success metric (B4) ----------
 router.post('/company/:id/success-metric', async (req: Request, res: Response) => {
   const { id } = req.params;
   const { successMetric } = req.body as { successMetric: string };
@@ -1038,51 +928,6 @@ router.post('/company/:id/success-metric', async (req: Request, res: Response) =
   return res.json({ company });
 });
 
-router.post('/company/:id/reps/invite', async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const { emails } = req.body as { emails: Array<{ email: string; name?: string }> };
-  if (!Array.isArray(emails) || emails.length === 0) {
-    return res.status(400).json({ error: 'emails array required' });
-  }
-  if (emails.length > 15) {
-    return res.status(400).json({ error: 'Max 15 invites per batch' });
-  }
-
-  const company = await OnboardingCompany.findById(id);
-  if (!company) return res.status(404).json({ error: 'Company not found' });
-
-  const invites = [];
-  for (const { email, name } of emails) {
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) continue;
-    const existing = await RepInvite.findOne({ companyId: id, email: email.toLowerCase() });
-    if (existing) {
-      invites.push(existing);
-      continue;
-    }
-    const token = crypto.randomBytes(20).toString('hex');
-    const invite = await RepInvite.create({
-      companyId: id,
-      email: email.toLowerCase(),
-      name: name || '',
-      inviteToken: token,
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-    });
-    invites.push(invite);
-  }
-
-  await trackFunnelEvent('reps_invited', id, { count: invites.length });
-
-  return res.status(201).json({
-    invites: invites.map((i) => ({
-      _id: i._id,
-      email: i.email,
-      name: i.name,
-      status: i.status,
-      inviteLink: buildInviteLink(req, i.inviteToken),
-    })),
-  });
-});
-
 router.post('/company/:id/launch', async (req: Request, res: Response) => {
   const { id } = req.params;
   const company = await OnboardingCompany.findById(id);
@@ -1096,12 +941,107 @@ router.post('/company/:id/launch', async (req: Request, res: Response) => {
   await company.save();
   await trackFunnelEvent('phase_b_complete', company._id, {});
 
+  // Bridge: graduate the founder into the MerakiPeople SuperAdmin database.
+  // Failures here MUST NOT roll back the launch — onboarding-side state is
+  // already saved above. We just log + surface the result in the response so
+  // the founder can see what synced.
+  let graduation: any = null;
+  try {
+    const { graduateToMerakiAdmin } = await import('../services/bridge/graduate');
+    graduation = await graduateToMerakiAdmin(company._id);
+    if (graduation.status === 'success') {
+      console.log(
+        `[bridge] graduated company=${company.companyName} → meraki_admin ` +
+          `(company_id=${graduation.meraki_company_id}, prompts seeded=${graduation.prompts_seeded.length})`,
+      );
+
+      // Fire-and-forget AI prompt customization. The founder gets back the
+      // launch response immediately (with scaffolded prompts already in
+      // meraki_admin); the customizer replaces those with bespoke prompts in
+      // the background over the next 2-3 minutes.
+      void (async () => {
+        try {
+          const { customizePromptsForCompany } = await import(
+            '../services/bridge/promptCustomizer'
+          );
+          await customizePromptsForCompany(company._id);
+        } catch (err: any) {
+          console.error('[customizer] post-graduation run threw:', err?.message || err);
+        }
+      })();
+    } else {
+      console.warn(`[bridge] graduation reported error: ${graduation.error}`);
+    }
+  } catch (err: any) {
+    console.error('[bridge] graduation threw:', err?.message || err);
+    graduation = { status: 'error', error: err?.message || 'graduation threw' };
+  }
+
   const leadCount = await OnboardingLead.countDocuments({ companyId: company._id });
-  const repCount = await RepInvite.countDocuments({ companyId: company._id });
   return res.json({
     company,
-    summary: { leadCount, repCount, successMetric: company.successMetric },
+    summary: { leadCount, successMetric: company.successMetric },
+    graduation,
   });
+});
+
+/**
+ * Re-trigger graduation for an already-launched company. Useful for
+ * (a) testing the bridge against an existing company without resetting
+ * launch state, and (b) refreshing meraki_admin records after the founder
+ * edits their docs / regenerates content.
+ *
+ * Idempotent: safe to call repeatedly. Won't overwrite manually edited
+ * system_prompts in SuperAdmin (those are skipped).
+ */
+router.post('/company/:id/graduate', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const company = await OnboardingCompany.findById(id);
+  if (!company) return res.status(404).json({ error: 'Company not found' });
+
+  try {
+    const { graduateToMerakiAdmin } = await import('../services/bridge/graduate');
+    const graduation = await graduateToMerakiAdmin(company._id);
+    return res.json({ graduation });
+  } catch (err: any) {
+    console.error('[bridge] /graduate threw:', err?.message || err);
+    return res.status(500).json({ error: err?.message || 'graduation failed' });
+  }
+});
+
+/**
+ * Trigger AI prompt customization for a company. Replaces the generic
+ * scaffolds (seeded by graduation) with bespoke system prompts generated
+ * + critiqued by Claude.
+ *
+ * Sync mode (default): waits for all 16 to complete (~2-3 min) and returns
+ * the full summary. Use for testing.
+ *
+ * Async mode (?async=1): fires the job and returns immediately. Use as the
+ * post-graduation hook so the founder isn't kept waiting.
+ */
+router.post('/company/:id/customize-prompts', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const company = await OnboardingCompany.findById(id);
+  if (!company) return res.status(404).json({ error: 'Company not found' });
+
+  const isAsync = req.query.async === '1' || req.query.async === 'true';
+
+  try {
+    const { customizePromptsForCompany } = await import('../services/bridge/promptCustomizer');
+    if (isAsync) {
+      // Fire-and-forget. Errors logged inside the customizer.
+      void customizePromptsForCompany(company._id).catch((err: any) =>
+        console.error('[customizer] async run threw:', err?.message || err),
+      );
+      return res.status(202).json({ status: 'queued', company_id: id });
+    }
+    const summary = await customizePromptsForCompany(company._id);
+    return res.json({ summary });
+  } catch (err: any) {
+    console.error('[customizer] /customize-prompts threw:', err?.message || err);
+    return res.status(500).json({ error: err?.message || 'customization failed' });
+  }
 });
 
 // ---------- Feature 6: Re-engagement / nudges ----------
@@ -1175,12 +1115,6 @@ function normaliseUrl(url: string | undefined): string {
   if (!u) return '';
   if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
   return u;
-}
-
-function buildInviteLink(req: Request, token: string): string {
-  const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
-  const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000';
-  return `${proto}://${host}/rep/${token}`;
 }
 
 export default router;

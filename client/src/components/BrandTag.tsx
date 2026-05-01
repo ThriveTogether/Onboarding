@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLocation } from 'react-router-dom';
 import Logo from './Logo';
 
 interface Props {
@@ -6,7 +7,8 @@ interface Props {
   align?: 'left' | 'center';
   /**
    * Hide on the AppShell pages — the sidebar there already shows the logo,
-   * adding a fixed pill on top would double up.
+   * adding a fixed pill on top would double up. When true, the component
+   * returns null on any route under /app/.
    */
   hideOnSidebarPages?: boolean;
 }
@@ -20,7 +22,18 @@ interface Props {
  * pass `variant="inline"` to drop it into a flow (e.g. footer of the auth
  * cards).
  */
-export default function BrandTag({ variant = 'fixed', align = 'left' }: Props) {
+export default function BrandTag({
+  variant = 'fixed',
+  align = 'left',
+  hideOnSidebarPages = false,
+}: Props) {
+  const location = useLocation();
+  // The /app/* shell already renders the logo + product/powered text in its
+  // sidebar header — hide the floating pill there to avoid the double-brand
+  // overlap with page titles.
+  if (hideOnSidebarPages && location.pathname.startsWith('/app')) {
+    return null;
+  }
   const cls = [
     'mp-brand-tag',
     `mp-brand-tag--${variant}`,
@@ -36,7 +49,11 @@ export default function BrandTag({ variant = 'fixed', align = 'left' }: Props) {
         <span className="mp-brand-tag__product">Growth OS</span>
         <span className="mp-brand-tag__sep">·</span>
         <span className="mp-brand-tag__powered">
-          powered by <strong>MerakiPeople</strong>
+          powered by{' '}
+          <strong>
+            <span className="mp-brand-tag__meraki">Meraki</span>
+            <span className="mp-brand-tag__people">People</span>
+          </strong>
         </span>
       </div>
     </div>

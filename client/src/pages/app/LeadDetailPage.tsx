@@ -255,10 +255,10 @@ export default function LeadDetailPage() {
             <NurtureRow
               stage="Warm → Hot"
               status={['warm', 'hot'].includes(lead.stage) ? 'active' : 'pending'}
-              body="When score crosses 76 with meaningful replies + pricing/timeline signal, handoff to you with auto-generated Call Prep."
+              body="When score crosses 76 with meaningful replies + pricing/timeline signal, hand off to you with auto-generated Call Prep."
             />
             <NurtureRow
-              stage="Rep-ready"
+              stage="Ready for you"
               status={lead.stage === 'ready' ? 'active' : 'pending'}
               body="Lead appears in your Morning Playbook under 'Needs you'. Call Prep brief ready."
             />

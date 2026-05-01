@@ -1,171 +1,271 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Check, Copy, Send } from 'lucide-react';
+import {
+  Check,
+  Building2,
+  Users,
+  FileText,
+  MessageSquare,
+  Flame,
+  TrendingUp,
+  ChevronRight,
+} from 'lucide-react';
 import { onboardingAPI } from '../api/onboarding';
 import Card from '../components/Card';
 
+// What we surface on the final screen, per item 11:
+//   (a) live counts — what the founder built / found
+//   (b) shaped insights — what the data is telling us about who buys
+//   (c) next-action prompts — top leads to start with today
+interface SessionSummary {
+  successMetric: string;
+  companyName: string;
+  // (a)
+  leadCount: number;
+  accountCount: number;
+  docsApproved: number;
+  docsTotal: number;
+  messageTemplates: number;
+  painSignals: number;
+  // (b) shaped insights
+  topIndustry: string | null;
+  topCity: string | null;
+  topPainSignal: string | null;
+  // (c) top-5 hottest leads
+  topLeads: Array<{
+    _id: string;
+    contactName: string;
+    contactTitle: string;
+    targetCompany: string;
+    matchPercent: number;
+    industry?: string;
+    city?: string;
+  }>;
+}
+
 export default function OnboardingCompletePage() {
   const { id } = useParams<{ id: string }>();
-  const [summary, setSummary] = useState<{ leadCount: number; repCount: number; successMetric: string } | null>(null);
-  const [invites, setInvites] = useState<Array<{ email: string; inviteLink: string }>>([]);
+  const [summary, setSummary] = useState<SessionSummary | null>(null);
 
   useEffect(() => {
     if (!id) return;
-    onboardingAPI.state(id).then(({ data }) => {
-      setSummary({
-        leadCount: data.leadCount,
-        repCount: data.reps?.length || 0,
-        successMetric: data.company?.successMetric || '',
-      });
-      setInvites(data.reps?.map((r: any) => ({ email: r.email, inviteLink: r.inviteLink })) || []);
-    });
+    Promise.all([onboardingAPI.state(id), onboardingAPI.listLeads(id)]).then(
+      ([stateRes, leadsRes]) => {
+        const company: any = stateRes.data.company || {};
+        const docs: any[] = (stateRes.data as any).docs || [];
+        const leads: any[] = leadsRes.data.leads || [];
+
+        // Per item 9 we surface 3 reviewable docs in the founder UI: brochure
+        // (knowledge_base), nurture, brand. Scoring is auto-generated.
+        const reviewableKinds = new Set([
+          'knowledge_base',
+          'nurture_strategy',
+          'brand_guidelines',
+        ]);
+        const approvedStatuses = new Set(['approved', 'auto_approved']);
+        const docsApproved = docs.filter(
+          (d) => reviewableKinds.has(d.kind) && approvedStatuses.has(d.status),
+        ).length;
+        const docsTotal = 3;
+
+        const painSignals = Array.isArray(company.targetProfile?.painSignals)
+          ? company.targetProfile.painSignals.filter((p: string) => p && p.trim()).length
+          : 0;
+        const topPainSignal: string | null =
+          (company.targetProfile?.painSignals || []).find((p: string) => p && p.trim()) || null;
+
+        // Account count = unique target companies among the leads.
+        const accountSet = new Set<string>();
+        leads.forEach((l) => l.targetCompany && accountSet.add(l.targetCompany));
+
+        setSummary({
+          successMetric: company.successMetric || '',
+          companyName: company.companyName || '',
+          leadCount: stateRes.data.leadCount || 0,
+          accountCount: accountSet.size,
+          docsApproved,
+          docsTotal,
+          messageTemplates: Array.isArray(company.messageTemplates)
+            ? company.messageTemplates.filter((t: any) => t?.body).length
+            : 0,
+          painSignals,
+          topIndustry: modeOf(leads.map((l) => l.industry).filter(Boolean)),
+          topCity: modeOf(leads.map((l) => l.city).filter(Boolean)),
+          topPainSignal,
+          topLeads: [...leads]
+            .sort((a, b) => (b.matchPercent || 0) - (a.matchPercent || 0))
+            .slice(0, 5)
+            .map((l) => ({
+              _id: l._id,
+              contactName: l.contactName,
+              contactTitle: l.contactTitle,
+              targetCompany: l.targetCompany,
+              matchPercent: l.matchPercent || 0,
+              industry: l.industry,
+              city: l.city,
+            })),
+        });
+      },
+    );
   }, [id]);
 
   return (
-    <div className="mp-app-shell mp-center">
-      <div style={{ width: '100%', maxWidth: 560 }}>
-        <Card padding="lg" className="mp-text-center">
+    <div className="mp-app-shell" style={{ padding: 'var(--space-6) var(--space-4)' }}>
+      <div style={{ width: '100%', maxWidth: 880, margin: '0 auto' }}>
+        {/* Hero */}
+        <Card padding="lg" className="mp-text-center" style={{ marginBottom: 16 }}>
           <div
             style={{
-              width: 64,
-              height: 64,
+              width: 56,
+              height: 56,
               borderRadius: '50%',
               background: 'var(--mp-coral-100)',
               color: 'var(--mp-coral)',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              marginBottom: 16,
+              marginBottom: 12,
             }}
           >
-            <Check size={32} strokeWidth={2.5} />
+            <Check size={28} strokeWidth={2.5} />
           </div>
-
-          <h2 className="mp-h2" style={{ margin: 0 }}>Your sales engine is live.</h2>
-          <p className="mp-body-sm mp-muted" style={{ marginTop: 6, marginBottom: 32 }}>
-            AI nurturing begins now.
+          <h2 className="mp-h2" style={{ margin: 0 }}>
+            {summary?.companyName ? `${summary.companyName}'s sales engine is live.` : 'Your sales engine is live.'}
+          </h2>
+          <p className="mp-body-sm mp-muted" style={{ marginTop: 6, marginBottom: 0 }}>
+            Here's what we built together — and the first leads to call today.
           </p>
-
-          {summary && (
-            <div className="mp-grid-2" style={{ marginBottom: 24 }}>
-              <Stat value={summary.leadCount} label="leads in your pipeline" />
-              <Stat value={summary.repCount} label="reps invited" />
-            </div>
-          )}
-
-          {summary?.successMetric && (
-            <div style={{ padding: 16, background: 'var(--bg-2)', borderRadius: 'var(--radius-md)', marginBottom: 16, textAlign: 'left' }}>
-              <div className="mp-overline" style={{ marginBottom: 4 }}>Your 90-day north star</div>
-              <div>{summary.successMetric}</div>
-            </div>
-          )}
-
-          {invites.length > 0 && (
-            <div className="mp-rep-invites">
-              <div className="mp-rep-invites__head">
-                <div className="mp-overline">Rep invite links</div>
-                <p className="mp-meta" style={{ margin: 0 }}>
-                  Send these to your reps — one click signs them in. Links never expire.
-                </p>
-              </div>
-              <div className="mp-rep-invites__list">
-                {invites.map((i) => (
-                  <RepInviteCard key={i.email} email={i.email} inviteLink={i.inviteLink} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
-            <Link to="/app/target-profile">
-              <button className="mp-btn mp-btn--primary mp-btn--lg">Open MerakiPeople →</button>
-            </Link>
-          </div>
         </Card>
-      </div>
-    </div>
-  );
-}
 
-function Stat({ value, label }: { value: number; label: string }) {
-  return (
-    <div style={{ background: 'var(--bg-2)', borderRadius: 'var(--radius-md)', padding: 16 }}>
-      <div style={{ fontSize: 'var(--fs-3xl)', fontWeight: 700, color: 'var(--mp-coral)', letterSpacing: 'var(--tracking-tight)', lineHeight: 1 }}>
-        {value}
-      </div>
-      <div className="mp-meta" style={{ marginTop: 4 }}>{label}</div>
-    </div>
-  );
-}
+        {/* (a) Live counts — what the founder built / found during onboarding */}
+        {summary && (
+          <div className="mp-complete-stats" style={{ marginBottom: 16 }}>
+            <BigStat icon={Building2} value={summary.accountCount} label="accounts in your ICP" />
+            <BigStat icon={Users} value={summary.leadCount} label="leads in your pipeline" />
+            <BigStat
+              icon={FileText}
+              value={`${summary.docsApproved}/${summary.docsTotal}`}
+              label="strategy docs ready"
+            />
+            <BigStat icon={MessageSquare} value={summary.messageTemplates} label="message templates drafted" />
+          </div>
+        )}
 
-function RepInviteCard({ email, inviteLink }: { email: string; inviteLink: string }) {
-  const [copied, setCopied] = useState(false);
+        {/* (b) Shaped insights — what the data tells us about who buys */}
+        {summary && (summary.topIndustry || summary.topCity || summary.topPainSignal) && (
+          <Card padding="lg" style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <TrendingUp size={16} style={{ color: 'var(--mp-indigo)' }} />
+              <h3 className="mp-h4" style={{ margin: 0 }}>What the data is telling us</h3>
+            </div>
+            <div className="mp-complete-insights">
+              {summary.topIndustry && (
+                <Insight
+                  label="Hottest segment"
+                  body={summary.topIndustry}
+                  detail={summary.topCity ? `Concentrated in ${summary.topCity}` : undefined}
+                />
+              )}
+              {summary.topPainSignal && (
+                <Insight
+                  label="Top pain you solve"
+                  body={summary.topPainSignal}
+                />
+              )}
+              {summary.painSignals > 1 && (
+                <Insight
+                  label="Other pains captured"
+                  body={`${summary.painSignals - 1} more`}
+                  detail="Your AI weaves these into messaging by stage."
+                />
+              )}
+            </div>
+          </Card>
+        )}
 
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(inviteLink);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback for browsers without clipboard API — select the URL field
-      const el = document.getElementById(`invite-url-${email}`) as HTMLInputElement | null;
-      if (el) {
-        el.select();
-        document.execCommand('copy');
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      }
-    }
-  };
+        {/* (c) Next-action prompts — top 5 leads to start with today */}
+        {summary && summary.topLeads.length > 0 && (
+          <Card padding="lg" style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <Flame size={16} style={{ color: 'var(--mp-coral)' }} />
+              <h3 className="mp-h4" style={{ margin: 0 }}>Start with these {summary.topLeads.length} today</h3>
+            </div>
+            <p className="mp-body-sm mp-muted" style={{ marginTop: 0, marginBottom: 12 }}>
+              Highest match against your ICP. Your AI is already warming the rest.
+            </p>
+            <ol className="mp-complete-leads">
+              {summary.topLeads.map((l, i) => (
+                <li key={l._id} className="mp-complete-lead">
+                  <div className="mp-complete-lead__rank">{i + 1}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="mp-complete-lead__name">{l.contactName}</div>
+                    <div className="mp-complete-lead__sub">
+                      {l.contactTitle} · {l.targetCompany}
+                      {l.city ? ` · ${l.city}` : ''}
+                    </div>
+                  </div>
+                  <div className="mp-complete-lead__match">{l.matchPercent}%</div>
+                </li>
+              ))}
+            </ol>
+          </Card>
+        )}
 
-  const subject = encodeURIComponent("Your invite to start using your AI sales team");
-  const body = encodeURIComponent(
-    `Hi,\n\nYou've been invited to join the team. Use this link to sign in:\n\n${inviteLink}\n\nIt only takes a minute — you'll set up your CV next, and your morning playbook will be waiting.\n\nWelcome aboard!`
-  );
-  const mailtoLink = `mailto:${email}?subject=${subject}&body=${body}`;
+        {/* Success metric anchor */}
+        {summary?.successMetric && (
+          <Card padding="md" tone="tinted" style={{ marginBottom: 16 }}>
+            <div className="mp-overline" style={{ marginBottom: 4 }}>Your 90-day north star</div>
+            <div style={{ fontWeight: 'var(--fw-semibold)' }}>{summary.successMetric}</div>
+          </Card>
+        )}
 
-  return (
-    <div className="mp-rep-invite">
-      <div className="mp-rep-invite__top">
-        <div className="mp-rep-invite__avatar">
-          {email.slice(0, 1).toUpperCase()}
+        {/* CTAs */}
+        <div className="mp-complete-cta">
+          <Link to="/app/leads" className="mp-btn mp-btn--accent mp-btn--lg">
+            Start with these leads <ChevronRight size={16} />
+          </Link>
+          <Link to="/app/target-profile" className="mp-btn mp-btn--outline mp-btn--lg">
+            Open MerakiPeople
+          </Link>
         </div>
-        <div className="mp-rep-invite__email" title={email}>{email}</div>
-      </div>
-
-      <div className="mp-rep-invite__url-row">
-        <input
-          id={`invite-url-${email}`}
-          type="text"
-          value={inviteLink}
-          readOnly
-          className="mp-rep-invite__url"
-          onClick={(e) => (e.target as HTMLInputElement).select()}
-        />
-        <button
-          type="button"
-          className="mp-rep-invite__btn"
-          onClick={handleCopy}
-          aria-label="Copy invite link"
-        >
-          {copied ? (
-            <>
-              <Check size={14} /> Copied
-            </>
-          ) : (
-            <>
-              <Copy size={14} /> Copy
-            </>
-          )}
-        </button>
-        <a
-          href={mailtoLink}
-          className="mp-rep-invite__btn mp-rep-invite__btn--primary"
-          aria-label={`Email ${email}`}
-        >
-          <Send size={14} /> Email
-        </a>
       </div>
     </div>
   );
+}
+
+function BigStat({ icon: Icon, value, label }: { icon: any; value: number | string; label: string }) {
+  return (
+    <div className="mp-complete-stat">
+      <div className="mp-complete-stat__icon">
+        <Icon size={16} strokeWidth={2.5} />
+      </div>
+      <div className="mp-complete-stat__value">{value}</div>
+      <div className="mp-complete-stat__label">{label}</div>
+    </div>
+  );
+}
+
+function Insight({ label, body, detail }: { label: string; body: string; detail?: string }) {
+  return (
+    <div className="mp-complete-insight">
+      <div className="mp-overline">{label}</div>
+      <div className="mp-complete-insight__body">{body}</div>
+      {detail && <div className="mp-meta" style={{ marginTop: 2 }}>{detail}</div>}
+    </div>
+  );
+}
+
+function modeOf(values: string[]): string | null {
+  if (values.length === 0) return null;
+  const counts = new Map<string, number>();
+  for (const v of values) counts.set(v, (counts.get(v) || 0) + 1);
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const [k, c] of counts) {
+    if (c > bestCount) {
+      best = k;
+      bestCount = c;
+    }
+  }
+  return best;
 }

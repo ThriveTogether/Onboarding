@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import { OnboardingCompany, IOnboardingCompany, ITargetProfile } from '../../models/OnboardingCompany';
 import { getVerticalTemplate } from './verticalTemplates';
-import { summariseResearch } from './companyResearch';
+import { summariseResearch, runMultiSourceResearch } from './companyResearch';
 import { runAgentCritiqueLoop } from '../ai/orchestrator';
 import { callClaude, isAIAvailable } from '../ai/claudeClient';
 import { extractJSON } from '../ai/jsonExtractor';
@@ -36,6 +36,7 @@ export async function predictTargetProfile(
     plannedSteps: [
       { label: 'Search for LinkedIn company page', detail: 'Looking up the company on LinkedIn via Google.', evidence: ['Google search · site:linkedin.com/company'] },
       { label: 'Search for company website signals', detail: 'Pulling positioning + key pages from Google search results.', evidence: [company.websiteUrl || 'website'] },
+      { label: 'Check website freshness', detail: 'Looking for last-modified, copyright year, and recent dates.', evidence: [company.websiteUrl || 'website'] },
       { label: 'Check public sources for news + funding', detail: 'Searching Google for funding announcements and news mentions.', evidence: ['Google news search'] },
       { label: `Load ${template.displayName} vertical template`, detail: 'Industry-specific defaults for geography, pain signals, decision makers.', evidence: [`Vertical template: ${template.displayName}`] },
       { label: 'Draft target profile with Claude', detail: 'Combining research + template into a specific ICP prediction.', evidence: ['Claude Sonnet 4.5', 'onboarding-target-profile prompt'] },
@@ -46,89 +47,117 @@ export async function predictTargetProfile(
   const sessionId = session._id.toString();
 
   try {
-    // Step 1: LinkedIn
-    await updateStep(sessionId, 'Search for LinkedIn company page', { status: 'active' });
-    const linkedin = company.research.linkedin;
-    {
-      const stepStatus =
-        linkedin.status === 'success'
-          ? 'done'
-          : linkedin.status === 'skipped' || linkedin.status === 'not_found'
-          ? 'skipped'
-          : 'error';
-      const output =
-        linkedin.status === 'success'
-          ? `Found. ${linkedin.about.slice(0, 140)}${linkedin.about.length > 140 ? '…' : ''}`
-          : linkedin.status === 'not_found'
-          ? 'No public LinkedIn company page found via Google. Skipping LinkedIn signals.'
-          : linkedin.status === 'skipped'
-          ? 'No LinkedIn URL provided. Skipping.'
-          : `LinkedIn lookup failed (${linkedin.status}).`;
-      const evidence =
-        linkedin.status === 'success'
-          ? [
-              'LinkedIn page (verified via Google)',
-              linkedin.employeeCount ? `Employees: ${linkedin.employeeCount}` : '',
-              linkedin.headquarters ? `HQ: ${linkedin.headquarters}` : '',
-            ].filter(Boolean)
-          : [];
-      await updateStep(sessionId, 'Search for LinkedIn company page', {
-        status: stepStatus,
-        output,
-        evidence,
-      });
-    }
+    // Steps 1-4: live multi-source research with progress events. We always
+    // re-run the research here (rather than reading from the cache populated
+    // by the eager warm-up) so the founder sees each source as a real,
+    // time-spending step in the thinking panel.
+    await runMultiSourceResearch(company._id, {
+      onProgress: async (event) => {
+        if (event.source === 'linkedin') {
+          if (event.phase === 'start') {
+            await updateStep(sessionId, 'Search for LinkedIn company page', { status: 'active' });
+          } else {
+            const r = event.result as IOnboardingCompany['research']['linkedin'];
+            const stepStatus =
+              r.status === 'success'
+                ? 'done'
+                : r.status === 'skipped' || r.status === 'not_found'
+                ? 'skipped'
+                : 'error';
+            const output =
+              r.status === 'success'
+                ? `Found. ${r.about.slice(0, 140)}${r.about.length > 140 ? '…' : ''}`
+                : r.status === 'not_found'
+                ? 'No public LinkedIn company page found via Google. Skipping LinkedIn signals.'
+                : r.status === 'skipped'
+                ? 'No LinkedIn URL provided. Skipping.'
+                : `LinkedIn lookup failed (${r.status}).`;
+            const evidence =
+              r.status === 'success'
+                ? [
+                    'LinkedIn page (verified via Google)',
+                    r.employeeCount ? `Employees: ${r.employeeCount}` : '',
+                    r.headquarters ? `HQ: ${r.headquarters}` : '',
+                  ].filter(Boolean)
+                : [];
+            await updateStep(sessionId, 'Search for LinkedIn company page', { status: stepStatus, output, evidence });
+          }
+        } else if (event.source === 'website') {
+          if (event.phase === 'start') {
+            await updateStep(sessionId, 'Search for company website signals', { status: 'active' });
+          } else {
+            const r = event.result as IOnboardingCompany['research']['website'];
+            const stepStatus =
+              r.status === 'success'
+                ? 'done'
+                : r.status === 'skipped' || r.status === 'not_found'
+                ? 'skipped'
+                : 'error';
+            const output =
+              r.status === 'success'
+                ? `Found. ${r.positioning.slice(0, 140)}${r.positioning.length > 140 ? '…' : ''}`
+                : r.status === 'not_found'
+                ? `No content surfaced for ${company.websiteUrl} via Google. Skipping website signals.`
+                : r.status === 'skipped'
+                ? 'No website URL provided. Skipping.'
+                : `Website lookup failed (${r.status}).`;
+            const evidence =
+              r.status === 'success' && company.websiteUrl
+                ? [company.websiteUrl, ...r.products.slice(0, 2)]
+                : [];
+            await updateStep(sessionId, 'Search for company website signals', { status: stepStatus, output, evidence });
+          }
+        } else if (event.source === 'freshness') {
+          if (event.phase === 'start') {
+            await updateStep(sessionId, 'Check website freshness', { status: 'active' });
+          } else {
+            const r = event.result as IOnboardingCompany['research']['website'];
+            const status = r.status === 'success' ? 'done' : 'skipped';
+            const output =
+              r.status !== 'success'
+                ? "Website didn't return content — skipping freshness check."
+                : r.freshness === 'fresh'
+                ? "Website looks current — we'll generate from it."
+                : r.freshness === 'stale'
+                ? "Website looks out of date — we'll suggest you upload a brochure instead."
+                : "Couldn't tell how fresh the site is — we'll ask you.";
+            await updateStep(sessionId, 'Check website freshness', {
+              status,
+              output,
+              evidence: r.freshnessSignals?.slice(0, 3) || [],
+            });
+          }
+        } else if (event.source === 'public') {
+          if (event.phase === 'start') {
+            await updateStep(sessionId, 'Check public sources for news + funding', { status: 'active' });
+          } else {
+            const r = event.result as IOnboardingCompany['research']['publicSources'];
+            const stepStatus =
+              r.status === 'success' || r.status === 'partial'
+                ? 'done'
+                : r.status === 'skipped' || r.status === 'not_found'
+                ? 'skipped'
+                : 'done';
+            const output =
+              r.status === 'success' || r.status === 'partial'
+                ? `${r.newsMentions.length} news mentions · ${r.fundingSignals.length} funding signals.`
+                : r.status === 'not_found'
+                ? 'No news or funding signals found via Google.'
+                : `Public sources status: ${r.status}.`;
+            await updateStep(sessionId, 'Check public sources for news + funding', {
+              status: stepStatus,
+              output,
+              evidence: r.fundingSignals.slice(0, 2),
+            });
+          }
+        }
+      },
+    });
 
-    // Step 2: Website
-    await updateStep(sessionId, 'Search for company website signals', { status: 'active' });
-    const website = company.research.website;
-    {
-      const stepStatus =
-        website.status === 'success'
-          ? 'done'
-          : website.status === 'skipped' || website.status === 'not_found'
-          ? 'skipped'
-          : 'error';
-      const output =
-        website.status === 'success'
-          ? `Found. ${website.positioning.slice(0, 140)}${website.positioning.length > 140 ? '…' : ''}`
-          : website.status === 'not_found'
-          ? `No content surfaced for ${company.websiteUrl} via Google. Skipping website signals.`
-          : website.status === 'skipped'
-          ? 'No website URL provided. Skipping.'
-          : `Website lookup failed (${website.status}).`;
-      const evidence =
-        website.status === 'success' && company.websiteUrl
-          ? [company.websiteUrl, ...website.products.slice(0, 2)]
-          : [];
-      await updateStep(sessionId, 'Search for company website signals', {
-        status: stepStatus,
-        output,
-        evidence,
-      });
-    }
-
-    // Step 3: Public sources
-    await updateStep(sessionId, 'Check public sources for news + funding', { status: 'active' });
-    const publicSrc = company.research.publicSources;
-    {
-      const stepStatus =
-        publicSrc.status === 'success' || publicSrc.status === 'partial'
-          ? 'done'
-          : publicSrc.status === 'skipped' || publicSrc.status === 'not_found'
-          ? 'skipped'
-          : 'done';
-      const output =
-        publicSrc.status === 'success' || publicSrc.status === 'partial'
-          ? `${publicSrc.newsMentions.length} news mentions · ${publicSrc.fundingSignals.length} funding signals.`
-          : publicSrc.status === 'not_found'
-          ? 'No news or funding signals found via Google.'
-          : `Public sources status: ${publicSrc.status}.`;
-      await updateStep(sessionId, 'Check public sources for news + funding', {
-        status: stepStatus,
-        output,
-        evidence: publicSrc.fundingSignals.slice(0, 2),
-      });
+    // Reload company to get the freshly-saved research.
+    const refreshed = await OnboardingCompany.findById(company._id);
+    if (refreshed) {
+      company.research = refreshed.research;
     }
 
     // Step 4: Vertical template

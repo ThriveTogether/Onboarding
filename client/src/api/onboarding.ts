@@ -127,8 +127,6 @@ export const onboardingAPI = {
     api.post(`/onboarding/company/${id}/docs/${kind}/skip`),
   saveSuccessMetric: (id: string, successMetric: string) =>
     api.post(`/onboarding/company/${id}/success-metric`, { successMetric }),
-  inviteReps: (id: string, emails: Array<{ email: string; name?: string }>) =>
-    api.post(`/onboarding/company/${id}/reps/invite`, { emails }),
   launch: (id: string) => api.post(`/onboarding/company/${id}/launch`),
   diagnostic: (id: string, response: string) =>
     api.post(`/onboarding/company/${id}/diagnostic`, { response }),
@@ -138,6 +136,8 @@ export const onboardingAPI = {
     api.patch(`/onboarding/leads/${leadId}/feedback`, { feedback, note }),
   saveIcpNote: (id: string, note: string) =>
     api.post(`/onboarding/company/${id}/icp-note`, { note }),
+  saveCurrentCustomers: (id: string, customers: string[]) =>
+    api.post(`/onboarding/company/${id}/current-customers`, { customers }),
   draftMessage: (
     id: string,
     payload: {
@@ -191,12 +191,4 @@ export const onboardingAPI = {
     api.post(`/onboarding/company/${id}/docs/${kind}/impact`, { newContent }),
   applyDocEdit: (id: string, kind: OnboardingDocKind, newContent: any, applyTo: 'all_leads' | 'new_leads') =>
     api.post(`/onboarding/company/${id}/docs/${kind}/apply-edit`, { newContent, applyTo }),
-
-  // Rep routes (public)
-  getRepInvite: (token: string) => api.get(`/onboarding/rep-invite/${token}`),
-  repLogin: (token: string) => api.post(`/onboarding/rep-invite/${token}/login`),
-  uploadRepCV: (token: string, fileName: string) =>
-    api.post(`/onboarding/rep-invite/${token}/cv`, { fileName }),
-  skipRepCV: (token: string) => api.post(`/onboarding/rep-invite/${token}/skip-cv`),
-  repPlaybook: (token: string) => api.get(`/onboarding/rep-invite/${token}/playbook`),
 };
