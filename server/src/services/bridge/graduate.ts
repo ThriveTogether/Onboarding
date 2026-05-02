@@ -68,7 +68,7 @@ const ALL_PROMPT_TYPES = [
 ];
 
 export interface GraduationSummary {
-  status: 'success' | 'error';
+  status: 'success' | 'partial' | 'error';
   meraki_company_id?: string;
   meraki_user_id?: string;
   prompts_seeded: string[];
@@ -86,6 +86,14 @@ export interface GraduationSummary {
   general_settings: { status: 'applied' | 'skipped_existing'; time_zone: string };
   target_profiles: { profiles: number; employees: number; artifacts_written: number };
   created: { company: boolean; user: boolean };
+  /**
+   * Per-step failures from the bridge orchestrator (steps 6 onwards). Empty
+   * on a clean run. Populated when an individual step throws — the
+   * orchestrator records it here, falls back to a safe empty result, and
+   * keeps going so the rest of the pipeline still runs. `status` becomes
+   * 'partial' whenever this array is non-empty.
+   */
+  bridge_failures: Array<{ step: string; reason: string }>;
   error?: string;
 }
 
@@ -137,6 +145,7 @@ export async function graduateToMerakiAdmin(
       general_settings: { status: 'skipped_existing', time_zone: 'Asia/Kolkata' },
       target_profiles: { profiles: 0, employees: 0, artifacts_written: 0 },
       created: { company: false, user: false },
+      bridge_failures: [],
     };
   }
 
@@ -160,6 +169,7 @@ export async function graduateToMerakiAdmin(
       general_settings: { status: 'skipped_existing', time_zone: 'Asia/Kolkata' },
       target_profiles: { profiles: 0, employees: 0, artifacts_written: 0 },
       created: { company: false, user: false },
+      bridge_failures: [],
     };
   }
 
@@ -337,69 +347,127 @@ export async function graduateToMerakiAdmin(
     }
   }
 
+  // -- Steps 6 onwards: each step is wrapped so a single failure can't take
+  //    out the rest of the bridge. If a step throws, we log it, push a
+  //    failure record, and continue with a safe fallback so downstream steps
+  //    that depend on this one still get to run (with reduced/empty input).
+  //    Steps 1-5 already use their own per-item try/catch internally.
+  const bridgeFailures: Array<{ step: string; reason: string }> = [];
+  const safeStep = async <T>(name: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
+    try {
+      return await fn();
+    } catch (err: any) {
+      const reason = err?.message || String(err);
+      console.error(`[bridge] step '${name}' failed:`, reason);
+      if (err?.stack) console.error(err.stack);
+      bridgeFailures.push({ step: name, reason });
+      return fallback;
+    }
+  };
+
   // 6. Workflow stages — seed the 5-stage funnel (cold → ready) the founder
   //    confirmed during onboarding, BEFORE bridging leads (so each lead can
   //    point to the right stage_id).
-  const workflowResult = await seedWorkflowStages(merakiCompanyId, company);
+  const workflowResult = await safeStep(
+    'workflow_stages',
+    () => seedWorkflowStages(merakiCompanyId, company),
+    { summary: { created: 0, existing: 0 }, stageIdsByName: {} as Record<string, string> },
+  );
 
   // 6b. Target profiles canonical docs — written FIRST because b2b_accounts
   //     and lead artifacts both link back to them via target_profile_id.
   //     Returns a map (variantIndex → target_profiles._id) used downstream.
-  const tpDocResult = await bridgeTargetProfileDocs(company, merakiCompanyId, merakiUserId);
+  const tpDocResult = await safeStep(
+    'target_profile_docs',
+    () => bridgeTargetProfileDocs(company, merakiCompanyId, merakiUserId),
+    { firstTargetProfileId: null as any, docIdsByVariant: {} as Record<number, string>, summary: { written: 0 } } as any,
+  );
 
   // 6c. Accounts — group OnboardingLeads by targetCompany, write one
   //     b2b_accounts doc per unique account with target_profile_id set.
   //     Returns a map (targetCompany → b2b_accounts._id) for the lead step.
-  const accountsResult = await bridgeAccounts(
-    company._id,
-    merakiCompanyId,
-    merakiUserId,
-    tpDocResult.firstTargetProfileId,
+  const accountsResult = await safeStep(
+    'accounts',
+    () => bridgeAccounts(
+      company._id,
+      merakiCompanyId,
+      merakiUserId,
+      tpDocResult.firstTargetProfileId,
+    ),
+    { summary: { bridged: 0, updated: 0, failed: 0 }, accountIdByCompanyKey: {} as Record<string, string> },
   );
 
   // 7. Leads — bridge every OnboardingLead into meraki_admin.artifacts with
   //    the right account_id and lead_stage. Now that accounts exist, leads
   //    chain back: target_profile → b2b_account → lead_hunting artifact.
-  const leadsResult = await bridgeLeads(
-    company._id,
-    merakiCompanyId,
-    merakiUserId,
-    workflowResult.stageIdsByName,
-    accountsResult.accountIdByCompanyKey,
+  const leadsResult = await safeStep(
+    'leads',
+    () => bridgeLeads(
+      company._id,
+      merakiCompanyId,
+      merakiUserId,
+      workflowResult.stageIdsByName,
+      accountsResult.accountIdByCompanyKey,
+    ),
+    { bridged: 0, updated: 0, failed: 0 },
   );
 
   // 8. Knowledge base — write the 4 reviewable docs + uploaded brochure into
   //    meraki_admin.knowledgebase as metadata rows. The platform vectorises
   //    on first AI use (vector embedding is a separate microservice).
-  const knowledgeBaseResult = await bridgeKnowledgeBaseDocs(company, docs, merakiCompanyId);
+  const knowledgeBaseResult = await safeStep(
+    'knowledge_base',
+    () => bridgeKnowledgeBaseDocs(company, docs, merakiCompanyId),
+    { bridged: [] as string[], skipped: [] as string[], failed: [] as Array<{ kind: string; reason: string }> },
+  );
 
   // 9. Default modules — copy modules_master into companies.modules and flip
   //    "Lead Generation" + "Call Compass" to is_selected:true. Runs BEFORE
   //    the roles step so we know which fields are enabled.
-  const modulesResult = await seedDefaultModules(merakiCompanyId);
+  const modulesResult = await safeStep(
+    'modules',
+    () => seedDefaultModules(merakiCompanyId),
+    { enabled: [] as string[], enabled_fields: [] as string[], total_available: 0, skipped_existing: false },
+  );
 
   // 10. Roles & responsibilities — flatten roles_master into companies.roles
   //     and mark is_selected on roles whose field matches an enabled module.
-  const rolesResult = await seedCompanyRoles(merakiCompanyId, modulesResult.enabled_fields);
+  const rolesResult = await safeStep(
+    'roles',
+    () => seedCompanyRoles(merakiCompanyId, modulesResult.enabled_fields),
+    { created: 0, existing: 0, selected_fields: [] as string[] },
+  );
 
   // 11. Channels config — translate the founder's preferredChannels into the
   //     admin's Channels collection booleans.
-  const channelsResult = await seedChannelsConfig(merakiCompanyId, company);
+  const channelsResult = await safeStep(
+    'channels',
+    () => seedChannelsConfig(merakiCompanyId, company),
+    { applied: {} as Record<string, boolean>, status: 'skipped_existing' as 'applied' | 'skipped_existing' },
+  );
 
   // 12. General settings — auto next action ON, lead research ON, time zone IST.
-  const settingsResult = await seedGeneralSettings(merakiCompanyId);
+  const settingsResult = await safeStep(
+    'general_settings',
+    () => seedGeneralSettings(merakiCompanyId),
+    { status: 'skipped_existing' as 'applied' | 'skipped_existing', time_zone: 'Asia/Kolkata' },
+  );
 
   // 13. Target profile artifacts — fan out one per (employee, profile) so
   //     each rep sees the founder's ICP in their History/Artifact view.
   //     Uses the canonical docs created in step 6b.
-  const targetProfilesResult = await bridgeTargetProfileArtifacts(
-    company,
-    merakiCompanyId,
-    tpDocResult.docIdsByVariant,
+  const targetProfilesResult = await safeStep(
+    'target_profile_artifacts',
+    () => bridgeTargetProfileArtifacts(
+      company,
+      merakiCompanyId,
+      tpDocResult.docIdsByVariant,
+    ),
+    { profiles: 0, employees: 0, artifacts_written: 0 },
   );
 
   return {
-    status: 'success',
+    status: bridgeFailures.length === 0 ? 'success' : 'partial',
     meraki_company_id: merakiCompanyId,
     meraki_user_id: merakiUserId,
     prompts_seeded: promptsSeeded,
@@ -417,6 +485,7 @@ export async function graduateToMerakiAdmin(
     general_settings: settingsResult,
     target_profiles: targetProfilesResult,
     created: { company: createdCompany, user: createdUser },
+    bridge_failures: bridgeFailures,
   };
 }
 
