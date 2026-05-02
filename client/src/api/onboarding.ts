@@ -128,6 +128,15 @@ export const onboardingAPI = {
   saveSuccessMetric: (id: string, successMetric: string) =>
     api.post(`/onboarding/company/${id}/success-metric`, { successMetric }),
   launch: (id: string) => api.post(`/onboarding/company/${id}/launch`),
+  /**
+   * Mints a short-lived JWT for SSO into MerakiPeople admin. Returns
+   * { token, redirectUrl, expiresInSeconds } on success or 503 with code
+   * 'HANDOFF_DISABLED' if the bridge isn't configured.
+   */
+  handoffToken: (id: string) =>
+    api.post<{ token: string; redirectUrl: string; expiresInSeconds: number }>(
+      `/onboarding/company/${id}/handoff-token`,
+    ),
   diagnostic: (id: string, response: string) =>
     api.post(`/onboarding/company/${id}/diagnostic`, { response }),
   getLead: (leadId: string) => api.get(`/onboarding/leads/${leadId}`),

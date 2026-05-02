@@ -1033,6 +1033,61 @@ router.post('/company/:id/graduate', async (req: Request, res: Response) => {
 });
 
 /**
+ * SSO handoff: mint a short-lived JWT and return the redirect URL the client
+ * should send the founder to. The admin app consumes the token and exchanges
+ * it for a real session via MerakiBackend's /api/auth/sso/onboarding-handoff.
+ *
+ * Idempotent + side-effect-free — safe to call any time after graduation.
+ * Returns 503 if the bridge isn't configured (missing secret / admin URL),
+ * so the client can fall back to the "Team Meraki will reach out" message
+ * instead of a broken redirect.
+ */
+router.post('/company/:id/handoff-token', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const company = await OnboardingCompany.findById(id);
+  if (!company) return res.status(404).json({ error: 'Company not found' });
+  if (!company.userId) return res.status(409).json({ error: 'Company has no founder user — cannot mint handoff token' });
+
+  const founder = await (await import('../models/User')).User.findById(company.userId);
+  if (!founder) return res.status(404).json({ error: 'Founder not found' });
+
+  const { isHandoffEnabled, signHandoffToken, buildHandoffRedirectUrl } = await import(
+    '../services/bridge/ssoHandoff'
+  );
+  if (!isHandoffEnabled()) {
+    return res
+      .status(503)
+      .json({ error: 'SSO handoff not configured', code: 'HANDOFF_DISABLED' });
+  }
+
+  // Look up the meraki_company_id we wrote during graduation so the admin app
+  // can deep-link straight to the right company even if the founder somehow
+  // ends up with multiple admin records.
+  let merakiCompanyId: string | undefined;
+  try {
+    const { MerakiCompany } = await import('../services/bridge/merakiAdminClient');
+    const adminCompany = await MerakiCompany().findOne({ onboarding_company_id: company._id });
+    merakiCompanyId = adminCompany ? String((adminCompany as any)._id) : undefined;
+  } catch (err: any) {
+    console.warn('[handoff] could not resolve meraki_company_id:', err?.message);
+  }
+
+  try {
+    const token = signHandoffToken({
+      sub: founder.email,
+      meraki_company_id: merakiCompanyId,
+      onboarding_company_id: String(company._id),
+      name: founder.name || '',
+    });
+    const redirectUrl = buildHandoffRedirectUrl(token);
+    return res.json({ token, redirectUrl, expiresInSeconds: 120 });
+  } catch (err: any) {
+    console.error('[handoff] sign failed:', err?.message || err);
+    return res.status(500).json({ error: err?.message || 'handoff token mint failed' });
+  }
+});
+
+/**
  * Trigger AI prompt customization for a company. Replaces the generic
  * scaffolds (seeded by graduation) with bespoke system prompts generated
  * + critiqued by Claude.

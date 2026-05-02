@@ -9,6 +9,7 @@ import {
   Flame,
   TrendingUp,
   Mail,
+  ArrowRight,
 } from 'lucide-react';
 import { onboardingAPI } from '../api/onboarding';
 import Card from '../components/Card';
@@ -46,6 +47,82 @@ interface SessionSummary {
 export default function OnboardingCompletePage() {
   const { id } = useParams<{ id: string }>();
   const [summary, setSummary] = useState<SessionSummary | null>(null);
+  const [handoffState, setHandoffState] = useState<
+    | { kind: 'idle' }
+    | { kind: 'minting' }
+    | { kind: 'ready'; redirectUrl: string }
+    | { kind: 'unavailable'; reason: string }
+    | { kind: 'error'; message: string }
+  >({ kind: 'idle' });
+
+  // On mount, try to mint the handoff token in parallel with the summary
+  // load. If the bridge isn't configured yet (HANDOFF_DISABLED), we silently
+  // fall back to the "Team Meraki will reach out" card.
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    setHandoffState({ kind: 'minting' });
+    onboardingAPI
+      .handoffToken(id)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.data?.redirectUrl) {
+          setHandoffState({ kind: 'ready', redirectUrl: res.data.redirectUrl });
+        } else {
+          setHandoffState({ kind: 'unavailable', reason: 'No redirect URL returned' });
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const code = err?.response?.data?.code;
+        if (err?.response?.status === 503 || code === 'HANDOFF_DISABLED') {
+          setHandoffState({
+            kind: 'unavailable',
+            reason: 'SSO handoff not configured on the server',
+          });
+        } else {
+          setHandoffState({
+            kind: 'error',
+            message: err?.response?.data?.error || err?.message || 'Could not mint handoff token',
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  const openMerakiPeople = async () => {
+    if (!id) return;
+    // If we already have a fresh URL, use it. Otherwise re-mint (handles the
+    // case where the founder sat on this page longer than the 120s TTL).
+    if (handoffState.kind === 'ready') {
+      window.location.href = handoffState.redirectUrl;
+      return;
+    }
+    setHandoffState({ kind: 'minting' });
+    try {
+      const res = await onboardingAPI.handoffToken(id);
+      if (res.data?.redirectUrl) {
+        window.location.href = res.data.redirectUrl;
+      } else {
+        setHandoffState({ kind: 'error', message: 'No redirect URL returned' });
+      }
+    } catch (err: any) {
+      const code = err?.response?.data?.code;
+      if (err?.response?.status === 503 || code === 'HANDOFF_DISABLED') {
+        setHandoffState({
+          kind: 'unavailable',
+          reason: 'SSO handoff not configured on the server',
+        });
+      } else {
+        setHandoffState({
+          kind: 'error',
+          message: err?.response?.data?.error || err?.message || 'Handoff failed',
+        });
+      }
+    }
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -219,30 +296,69 @@ export default function OnboardingCompletePage() {
           </Card>
         )}
 
-        {/* Hand-off — Team Meraki takes it from here. The seamless transition
-            into MerakiPeople is parked; for now the founder gets a clear
-            "we'll reach out" message instead of a dead-end CTA. */}
-        <Card padding="lg" tone="tinted" className="mp-text-center">
-          <div
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: '50%',
-              background: 'var(--bg-brand-soft)',
-              color: 'var(--mp-indigo)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: 10,
-            }}
-          >
-            <Mail size={22} strokeWidth={2} />
-          </div>
-          <h3 className="mp-h4" style={{ margin: '0 0 6px' }}>Team Meraki will reach out shortly</h3>
-          <p className="mp-body-sm mp-muted" style={{ margin: 0 }}>
-            We'll walk you through the leads, your strategy docs, and how to start your first conversations. Keep an eye on your inbox.
-          </p>
-        </Card>
+        {/* Hand-off — seamless SSO into MerakiPeople admin. If the bridge is
+            unconfigured (e.g. dev or staging without the secret), we fall
+            back to the "Team Meraki will reach out" card instead of showing
+            a broken button. */}
+        {handoffState.kind === 'unavailable' ? (
+          <Card padding="lg" tone="tinted" className="mp-text-center">
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: '50%',
+                background: 'var(--bg-brand-soft)',
+                color: 'var(--mp-indigo)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 10,
+              }}
+            >
+              <Mail size={22} strokeWidth={2} />
+            </div>
+            <h3 className="mp-h4" style={{ margin: '0 0 6px' }}>Team Meraki will reach out shortly</h3>
+            <p className="mp-body-sm mp-muted" style={{ margin: 0 }}>
+              We'll walk you through the leads, your strategy docs, and how to start your first conversations. Keep an eye on your inbox.
+            </p>
+          </Card>
+        ) : (
+          <Card padding="lg" tone="tinted" className="mp-text-center">
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: '50%',
+                background: 'var(--bg-brand-soft)',
+                color: 'var(--mp-indigo)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 10,
+              }}
+            >
+              <ArrowRight size={22} strokeWidth={2} />
+            </div>
+            <h3 className="mp-h4" style={{ margin: '0 0 6px' }}>Your MerakiPeople workspace is ready</h3>
+            <p className="mp-body-sm mp-muted" style={{ margin: '0 0 16px' }}>
+              Your company profile, target accounts, hunted leads, strategy docs and customised AI prompts are already loaded. Click below to log in — no password needed.
+            </p>
+            <button
+              type="button"
+              className="mp-btn mp-btn-primary"
+              onClick={openMerakiPeople}
+              disabled={handoffState.kind === 'minting'}
+              style={{ minWidth: 220 }}
+            >
+              {handoffState.kind === 'minting' ? 'Preparing your workspace…' : 'Open MerakiPeople →'}
+            </button>
+            {handoffState.kind === 'error' && (
+              <p className="mp-body-xs" style={{ marginTop: 10, color: 'var(--mp-coral)' }}>
+                {handoffState.message} — Team Meraki will reach out instead.
+              </p>
+            )}
+          </Card>
+        )}
       </div>
     </div>
   );

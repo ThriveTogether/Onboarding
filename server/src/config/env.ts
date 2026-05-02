@@ -19,6 +19,15 @@ export const env = {
   // Override MERAKI_ADMIN_MONGODB_URI when the production cluster differs.
   MERAKI_ADMIN_MONGODB_URI: process.env.MERAKI_ADMIN_MONGODB_URI || '',
   MERAKI_ADMIN_DB: process.env.MERAKI_ADMIN_DB || 'meraki_admin',
+  // SSO handoff: shared HMAC secret + admin-app URL so the founder lands logged-in.
+  // The Onboarding server signs a short-lived JWT with this secret; MerakiBackend
+  // verifies it with the SAME secret and exchanges it for an access_token.
+  // ALWAYS set this in production — falling back to a dev secret defeats the SSO.
+  ONBOARDING_HANDOFF_SECRET: process.env.ONBOARDING_HANDOFF_SECRET || '',
+  ONBOARDING_HANDOFF_TTL_SECONDS: Number(process.env.ONBOARDING_HANDOFF_TTL_SECONDS) || 120,
+  // Where to redirect the founder after onboarding completes — admin app's
+  // SSO landing route, e.g. https://app.merakipeople.com/sso?token=...
+  MERAKI_ADMIN_APP_URL: process.env.MERAKI_ADMIN_APP_URL || '',
 };
 
 export function validateEnv(): void {
@@ -30,5 +39,11 @@ export function validateEnv(): void {
   }
   if (!env.MONGODB_URI) {
     throw new Error('[env] MONGODB_URI is required');
+  }
+  if (!env.ONBOARDING_HANDOFF_SECRET) {
+    console.warn('[env] Warning: ONBOARDING_HANDOFF_SECRET not set — SSO handoff to MerakiPeople will be disabled.');
+  }
+  if (!env.MERAKI_ADMIN_APP_URL) {
+    console.warn('[env] Warning: MERAKI_ADMIN_APP_URL not set — Complete page will not auto-redirect to admin.');
   }
 }
