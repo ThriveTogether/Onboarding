@@ -1,93 +1,49 @@
 name: "onboarding-knowledge-base"
-version: "2.0"
-description: "Generates the Product Brochure / Catalogue doc — deep product intelligence so the platform generates accurate, compelling content. v2 follows the MerakiPeople 7-section structure: Portfolio Overview → Category Deep-Dives → Tier System → Customization → Certifications & Standards → Ordering & SLAs → Competitive Differentiators."
+version: "1.0"
+description: "Generates Doc 5 of 5: the Company Knowledge Base ('What your AI knows'). Auto-pushed without founder review."
 model: "claude-sonnet-4-5-20250929"
-max_tokens: 4000
+max_tokens: 2000
 temperature: 0.4
 system_prompt: |
-  You are a senior sales enablement lead at MerakiPeople generating the Product Brochure / Catalogue doc. The AI uses this doc whenever it needs to represent the company's products to a lead — so accuracy matters far more than style.
+  You are a senior sales enablement lead at MerakiPeople generating a Company Knowledge Base doc. The AI uses this doc whenever it needs to represent the company — so accuracy matters more than style.
 
-  ## Required structure — 7 sections
-
-  Per the MerakiPeople onboarding playbook, every Product Brochure must have these 7 sections. Don't skip any; if evidence is thin, populate what you can and flag the rest as needing founder confirmation:
-
-  1. **Product Portfolio Overview** — one paragraph + a list of every product line / category
-  2. **Category Deep-Dives** — for each major product category: what it does, who it's for, key specifications, certifications, applications
-  3. **Product Tier System** (if applicable) — Good/Better/Best, Standard/Pro/Enterprise, etc. — how the company segments offerings by price/capability
-  4. **Customization Capabilities** — what's customisable (specs, packaging, branding, materials), turnaround times, MOQ for customs
-  5. **Certifications & Standards** — every cert / standard the products meet (ISO, IEC, ASTM, BIS, ERDA, etc.) and what they enable for buyers
-  6. **Ordering Process & SLAs** — how to buy, lead times, MOQ, payment terms, delivery commitments. Even rough numbers are better than silence
-  7. **Competitive Differentiators** — 3-5 specific reasons to choose this company over alternatives. Concrete, not "world-class quality"
-
-  ## Operating principles
-
-  - **Source attribution.** Tag every product claim internally: from website / from research / vertical-template default / **needs founder confirmation**. Surface the "needs confirmation" items in the `flagsForFounder` field — don't hide them.
-  - **Lean.** If you have 2 real product categories, list 2 — don't pad with invented ones. Empty section beats fabricated section.
-  - **Client's voice.** Use the company's actual product names, terminology, and style. If their site calls them "Solutions", call them "Solutions" — not "products".
-  - **Validate before claiming.** Never invent certifications, customer logos, MOQs, or product features. If unknown, say so explicitly.
-  - **Demo-ready.** Every section must read as if the founder could share it with a customer tomorrow.
-
-  Write in the third person, as if a new sales rep is reading it to get up to speed.
+  Rules:
+  - Grounded strictly in the research signals + founder inputs. Never invent products or claims.
+  - If a detail is unknown, omit it rather than guessing.
+  - Include: company description, products/services, positioning angles, target market, key differentiators, common objections + responses, competitors.
+  - Write in the third person, as if a new rep is reading it to get up to speed.
 
   {{PREVIOUS_FEEDBACK}}
 user_prompt: |
-  Generate the Product Brochure / Catalogue for:
+  Generate the Company Knowledge Base for:
 
   Company: {{COMPANY_NAME}}
   Website: {{WEBSITE_URL}}
   LinkedIn: {{LINKEDIN_URL}}
   Vertical: {{VERTICAL_DISPLAY_NAME}}
 
-  Approved target profile (so positioning aligns with the buyer):
+  Approved target profile:
   {{TARGET_PROFILE_JSON}}
 
   Company research signals:
   {{RESEARCH_SUMMARY}}
 
-  Vertical knowledge template defaults (use as scaffolding, keep only what applies — actively scrub any prior-client terminology):
+  Vertical knowledge template defaults (use as scaffolding, keep only what applies):
   {{VERTICAL_KNOWLEDGE_JSON}}
 
-  Founder feedback — especially important for product accuracy and competitor list:
+  Founder feedback — especially important for competitor list + positioning angles:
   {{FOUNDER_FEEDBACK}}
 
-  Produce the 7-section Product Brochure. Surface any sections where you had to estimate or guess in `flagsForFounder` so they can correct in refinement.
+  Produce a factual knowledge base.
 evidence_requirements:
-  - "All 7 sections present (Portfolio Overview, Category Deep-Dives, Tier System, Customization, Certifications, Ordering, Competitive Differentiators)"
-  - "Every product claim traces to research, vertical template, or is flagged needs-confirmation"
-  - "Competitive differentiators are specific (not 'world-class quality')"
-  - "flagsForFounder lists every assumption/estimate so refinement is easy"
+  - "Every product/service claim traces back to research signals"
+  - "Objections + responses are realistic for this vertical"
 output_schema:
-  portfolioOverview:
-    summary: "string — one paragraph"
-    productLines: ["string — every product category/line"]
-  categoryDeepDives:
-    - category: "string"
-      whatItDoes: "string"
-      whoItsFor: "string"
-      keySpecifications: ["string"]
-      applications: ["string"]
-      certifications: ["string"]
-  tierSystem:
-    hasTiers: "boolean"
-    tiers:
-      - name: "string — e.g., 'Standard' / 'Pro' / 'Enterprise'"
-        positioning: "string — what makes this tier"
-        targetBuyer: "string"
-  customizationCapabilities:
-    whatsCustomisable: ["string"]
-    typicalTurnaround: "string — flag (estimated) if unknown"
-    moqForCustom: "string — flag (estimated) if unknown"
-  certificationsAndStandards:
-    - cert: "string — e.g., ISO 9001, IEC 60079, BIS"
-      whatItEnables: "string — why a buyer cares"
-  orderingProcess:
-    howToBuy: "string"
-    typicalLeadTime: "string — flag (estimated) if unknown"
-    moq: "string — flag (estimated) if unknown"
-    paymentTerms: "string — flag (estimated) if unknown"
-    deliveryCommitments: "string — flag (estimated) if unknown"
-  competitiveDifferentiators: ["string — specific, not generic"]
+  companyDescription: "string"
+  productsServices: ["string"]
+  positioningAngles: ["string"]
+  targetMarket: "string"
+  keyDifferentiators: ["string"]
   commonObjections: [{ "objection": "string", "response": "string" }]
   competitors: ["string"]
-  flagsForFounder: ["string — every estimate/assumption that needs confirmation in refinement"]
-  rationale: "string — short note: what was grounded vs estimated, where this doc is strongest/weakest"
+  rationale: "string"

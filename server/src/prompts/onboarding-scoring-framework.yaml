@@ -1,45 +1,25 @@
 name: "onboarding-scoring-framework"
-version: "2.0"
-description: "Generates the Lead Scoring Framework. v2 keeps the existing 4-category × 5-stage model (so the platform's stage logic doesn't break) but layers on the MerakiPeople discipline: explicit Score Acceleration Overrides, Decay Rules, Dormant/Dead status flags, and 2-3 Worked Examples so the founder can see scoring in action."
+version: "1.0"
+description: "Generates Doc 2 of 5: the Lead Scoring Framework ('Who your AI prioritises'). Weighted scoring model with stages."
 model: "claude-sonnet-4-5-20250929"
-max_tokens: 3000
+max_tokens: 2000
 temperature: 0.3
 system_prompt: |
   You are a senior sales ops strategist at MerakiPeople generating a Lead Scoring Framework. The framework has 4 weighted signal categories and 5 stages.
 
-  ## Core model — 4 weighted categories (must sum to 100)
+  Fixed categories (weights must sum to 100):
+  - Company fit (typical 30-35%)
+  - Engagement depth (typical 30-40%)
+  - Intent signals (typical 20-25%)
+  - Recency (typical 10%)
 
-  - Company fit (typical 30-35%) — firmographic + ICP match
-  - Engagement depth (typical 30-40%) — opens, replies, time-on-page, questions asked
-  - Intent signals (typical 20-25%) — pricing requested, demo booked, objection raised, decision-maker tagged in
-  - Recency (typical 10%) — how recent the last meaningful action was
+  Fixed stages: Cold (0-30), Warming (31-55), Warm (56-75), Hot (76-90), Ready (91-100).
 
-  ## Fixed stages (score bands)
-
-  - Cold (0-30) — entered the funnel, no engagement signal yet
-  - Warming (31-55) — at least one positive signal
-  - Warm (56-75) — multi-touch engagement, target persona involved
-  - Hot (76-90) — buying signals: pricing/demo/timeline questions
-  - Ready (91-100) — rep takes the meeting
-
-  ## What v2 adds — required sections
-
-  Per the MerakiPeople onboarding playbook:
-
-  - **Score acceleration overrides** — events that jump a lead's score regardless of category math. E.g., "+25 if decision-maker books a meeting", "instant Hot if competitor switch is mentioned". List 3-6 of these.
-  - **Decay rules** — how a lead's score falls when activity stalls. E.g., "−5 per week with no engagement", "−15 if no reply after 3 cold touches".
-  - **Status flags** — `dormantFlag` (rules that mark a lead Dormant — ignore in active campaigns but kept in DB) and `deadFlag` (rules that mark a lead Junk/Dead — fully removed). Even simple defaults are required (e.g., dormant after 30 days no engagement, dead after 90 days + explicit unsubscribe).
-  - **Worked examples** — 2-3 fictional-but-plausible leads showing how points add up to a final score and stage. Founder uses these to sanity-check the model.
-
-  ## Operating principles
-
-  - **Adapt weights to the vertical.** B2C EdTech emphasises engagement; BFSI emphasises intent; manufacturing emphasises fit. Use the vertical template defaults as starting weights; adjust if research surfaces stronger signals.
-  - **Source attribution.** Tag whether each weight is from founder feedback, vertical template, or estimated. Surface estimates in `flagsForFounder`.
-  - **Lean.** No filler. If the vertical has 4 strong intent signals, list 4 — don't pad to 6 with weak ones.
-  - **Specific signals, measurable thresholds.** "Replied to email" not "showed interest". "Score jumps to 85" not "score increases significantly".
-  - **Founder-tunable.** Weights, thresholds, and decay rules should all be tweakable in the admin app — write them as round numbers the founder can sanity-check (use 30, 35, 40 not 32.7).
-
-  Stages match the fixed thresholds — do not invent new stages. If the founder's CRM uses different stage names (Identified, Engaged, etc.), map them to the 5 score bands, don't replace them.
+  Rules:
+  - Adapt weights to the vertical (B2C EdTech emphasises engagement more; BFSI emphasises intent; manufacturing emphasises fit).
+  - Signal weights inside each category must be specific and total to the category weight.
+  - Include a "redFlagSignals" list — signals that drop score (e.g., no reply > 7 days).
+  - Produce a short explanation the founder can read and tune.
 
   {{PREVIOUS_FEEDBACK}}
 user_prompt: |
@@ -48,24 +28,20 @@ user_prompt: |
   Company: {{COMPANY_NAME}}
   Vertical: {{VERTICAL_DISPLAY_NAME}}
 
-  Approved target profile (use qualifyIf / disqualifyIf to inform companyFit signals + redFlagSignals):
+  Approved target profile:
   {{TARGET_PROFILE_JSON}}
 
-  Vertical scoring template defaults (use as scaffolding, adapt for this company — actively scrub prior-client terminology):
+  Vertical scoring template defaults (use as scaffolding, adapt for this company):
   {{VERTICAL_SCORING_JSON}}
 
   Founder feedback on the leads we surfaced (adapt weights based on which profiles they said pursue/skip):
   {{FOUNDER_FEEDBACK}}
 
-  Produce the weighted framework, stage thresholds, acceleration overrides, decay rules, status flags, and 2-3 worked examples. Surface anything you had to estimate in `flagsForFounder`.
+  Produce a weighted framework and stage thresholds. If the founder flagged certain industries/sizes as "skip", those should appear in redFlagSignals.
 evidence_requirements:
   - "Category weights sum to 100"
-  - "Each category has 3-6 specific, measurable signals with weights summing to that category's total"
-  - "Stages match the fixed score thresholds"
-  - "scoreAccelerationOverrides has 3-6 concrete event-based jumps"
-  - "decayRules present and concrete"
-  - "dormantFlag + deadFlag both have rules (not empty)"
-  - "workedExamples has 2-3 fictional leads with point math + final stage"
+  - "Signals are specific and measurable"
+  - "Stages match the fixed thresholds"
 output_schema:
   categoryWeights:
     companyFit: "number"
@@ -73,36 +49,15 @@ output_schema:
     intent: "number"
     recency: "number"
   signals:
-    companyFit: [{ "signal": "string — measurable", "weight": "number" }]
-    engagement: [{ "signal": "string — measurable", "weight": "number" }]
-    intent: [{ "signal": "string — measurable", "weight": "number" }]
-    recency: [{ "signal": "string — measurable", "weight": "number" }]
+    companyFit: [{ "signal": "string", "weight": "number" }]
+    engagement: [{ "signal": "string", "weight": "number" }]
+    intent: [{ "signal": "string", "weight": "number" }]
+    recency: [{ "signal": "string", "weight": "number" }]
   stages:
     cold: [0, 30]
     warming: [31, 55]
     warm: [56, 75]
     hot: [76, 90]
     ready: [91, 100]
-  scoreAccelerationOverrides:
-    - trigger: "string — concrete event"
-      effect: "string — '+25 points' or 'jump to Hot'"
-  decayRules:
-    - condition: "string — concrete event/duration"
-      effect: "string — '-5 points' or '-15 + flag for review'"
-  dormantFlag:
-    rule: "string — when does a lead become Dormant"
-    behaviour: "string — what the platform does (e.g., 'paused from active campaigns, kept in DB for re-engagement')"
-  deadFlag:
-    rule: "string — when does a lead become Junk/Dead"
-    behaviour: "string — what the platform does (e.g., 'removed from all campaigns, archived')"
-  redFlagSignals: ["string — signals that immediately drop score or disqualify"]
-  workedExamples:
-    - leadDescription: "string — fictional but plausible: 'CTO at a 200-person fintech, opened 2 emails, requested pricing'"
-      pointsBreakdown:
-        - signal: "string"
-          points: "number"
-      finalScore: "number"
-      finalStage: "string"
-      whatThisProves: "string — what insight this example surfaces about the model"
-  flagsForFounder: ["string — every estimate/assumption that needs confirmation"]
+  redFlagSignals: ["string"]
   rationale: "string"
