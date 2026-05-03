@@ -23,9 +23,9 @@ That was 4–8 hours of manual setup per founder, plus a series of follow-up cal
 1. The founder walks a 15–20 minute guided flow at **`https://tie-onboarding.t2ai.live`**
 2. They confirm their company info, lock a target profile, review AI-generated leads, edit message templates, and approve four strategy documents
 3. When they hit **Launch**, the system **graduates** them — provisions their entire MerakiPeople workspace in the background
-4. They're auto-redirected (via SSO, no second password needed) into MerakiPeople admin, with everything already populated
+4. The Complete page shows them the admin sign-in URL + their email; they click through and log in with the **same password they used to sign up at onboarding** (the bridge mirrors the password hash automatically — no second registration)
 
-By the time they land on `merakiadmin-staging.t2ai.ai`, they should feel like they've been a customer for weeks, not minutes.
+By the time they sign in to `merakiadmin-staging.t2ai.ai`, they should feel like they've been a customer for weeks, not minutes.
 
 ---
 
@@ -34,12 +34,10 @@ By the time they land on `merakiadmin-staging.t2ai.ai`, they should feel like th
 | Service | URL | Who logs in here |
 |---|---|---|
 | Onboarding wizard | https://tie-onboarding.t2ai.live | The founder being onboarded (signs up fresh) |
-| MerakiPeople Admin | https://merakiadmin-staging.t2ai.ai | The founder (auto-logged-in via SSO after onboarding) |
+| MerakiPeople Admin | https://merakiadmin-staging.t2ai.ai | The founder, using the same email + password they used at onboarding signup |
 | MerakiPeople Employee | https://merakiemployee-staging.t2ai.ai | Reps the founder adds in admin |
 
 Each tester should use a **fresh email** (e.g. `am-test-<yourname>@example.com`) so test data stays isolated from real founders.
-
-> **Status note (read me first):** the SSO auto-redirect from Onboarding → Admin is gated by an environment variable on the live VM. If the variable isn't set yet, the founder will see *"Team Meraki will reach out shortly"* on the Complete page instead of being auto-redirected. In that case, the AM team can still test the rest of the flow by **manually logging into the admin** with the same email + password they used on Onboarding signup. Ask the dev team for the rollout status before testing.
 
 ---
 
@@ -50,7 +48,7 @@ Each tester should use a **fresh email** (e.g. `am-test-<yourname>@example.com`)
 1. Open `https://tie-onboarding.t2ai.live` in a fresh browser session (incognito).
 2. Click **Sign up**. Use a real-looking but fake company:
    - Email: `am-test-<yourname>+<company>@example.com`
-   - Password: anything 8+ chars
+   - Password: anything 8+ chars — **remember it, you'll use it to log into admin too**
    - Company name: e.g. *"Aurelio Diagnostics"*
    - Vertical: pick whichever fits — Manufacturing / BFSI / B2B SaaS / EdTech / etc.
 3. Walk the 7 steps, paying attention to the data quality:
@@ -68,18 +66,20 @@ Each tester should use a **fresh email** (e.g. `am-test-<yourname>@example.com`)
 
 4. Watch the launch — it can take 30–60 seconds while the bridge writes to MerakiPeople.
 
-### Phase B — Auto-redirect to MerakiPeople admin
+### Phase B — Sign in to MerakiPeople admin
 
-5. After Launch, you land on the **Complete** page with celebratory stats: account count, lead count, etc.
+5. After Launch, you land on the **Complete** page with celebratory stats: account count, lead count, etc. Scroll to the bottom — you'll see a **Sign in to MerakiPeople** card with:
+   - A primary button: **↗ Open MerakiPeople admin** (opens `merakiadmin-staging.t2ai.ai` in a new tab)
+   - Your email displayed (with a Copy button)
+   - A reminder: *"The password you set when signing up here."*
 
-6. **If SSO is configured** (production state with env vars set):
-   - You see *"Your MerakiPeople workspace is ready"* with a 5-second countdown
-   - The page auto-redirects to `merakiadmin-staging.t2ai.ai/sso#token=…`
-   - You land on the admin **already logged in**, no password prompt
+6. Click **Open MerakiPeople admin**. The admin sign-in page opens in a new tab.
 
-7. **If SSO is NOT yet configured** (graceful fallback):
-   - You see *"Team Meraki will reach out shortly"*
-   - To verify the rest of the flow, **manually open** `https://merakiadmin-staging.t2ai.ai/signin` and log in with the same email + password you used during onboarding signup
+7. Log in with:
+   - **Email:** the same email you signed up with on onboarding
+   - **Password:** the same password you set on onboarding
+
+   The system bridges the bcrypt hash automatically when the founder graduates, so no separate registration is needed. If you mistyped at signup or forgot the password, use **Forgot password** on the admin sign-in page to reset.
 
 ### Phase C — Verify the founder's admin view (the prefit)
 
@@ -115,7 +115,7 @@ This tests that the prefit data fans out to reps the founder adds later.
 | Employee app tab | Expected state |
 |---|---|
 | **Target Profile** | The locked ICP variant the founder picked, with full description, industry, decision-makers, pain points |
-| **Accounts** | The accounts that were hunted during onboarding (typically 9 unique companies grouped from the leads). Each shows match %, industry, location, and links back to the Target Profile |
+| **Accounts** | The accounts that were hunted during onboarding (typically 9 unique companies grouped from the leads). Each shows match % (e.g. "87.0%", **not** "8700%"), industry, location, and links back to the Target Profile |
 | **Leads** | Every lead from onboarding (~10–16 leads). Each links to its account and shows decision-maker info |
 | **Home / dashboard** | Lead Generation + Call Compass module tiles visible |
 
@@ -131,8 +131,8 @@ Now stress-test the founder's experience:
 - **Edit a strategy doc** in admin Knowledge Base — does the change save?
 - **Move a lead** through the funnel (Cold → Warming → Warm) in the Lead Gen module — does the stage update?
 - **Send a test message** from the rep's lead view — does the channel config respect the founder's choices?
-- **Re-launch onboarding** with the same email — does it resume mid-flow correctly, or does it bounce you to the admin?
-- **Refresh** the Onboarding URL after Launch — does it auto-redirect back to admin (or show the Complete page with countdown)?
+- **Re-launch onboarding** with the same email — does it resume mid-flow correctly, or does it bounce you to the Complete page?
+- **Refresh** the Onboarding URL after Launch — does it land you back on the Complete page (with the sign-in card visible)?
 
 ---
 
@@ -142,7 +142,9 @@ Tester: _________________________ Date: _________________
 
 - [ ] Wizard completed end-to-end without errors
 - [ ] Launch returned within 60 seconds
-- [ ] Auto-redirect to admin worked **OR** manual login worked with onboarding credentials
+- [ ] Complete page shows the **Sign in to MerakiPeople** card with email + URL
+- [ ] **Open MerakiPeople admin** button opens the admin sign-in page in a new tab
+- [ ] Logged into admin with onboarding email + password (no second registration needed)
 - [ ] Company Profile → Company Info populated
 - [ ] Company Profile → Roles & Responsibilities populated (11 roles, Marketing + Sales selected)
 - [ ] Company Profile → Knowledge Base shows 5 documents (or 6 with uploaded brochure)
@@ -176,8 +178,7 @@ File these in the team Slack channel `#meraki-onboarding-test` or as GitHub issu
 
 These are known and being tracked separately:
 
-- **SSO env vars** on the production VMs may not be set yet — if the Complete page shows "Team Meraki will reach out", that's the graceful fallback, not a bug. Manual login still works.
-- **Bulk Batch Jobs page** in admin — pre-existing tenant-leak (admin sees other tenants' data). Fix is in `meraki-admin-app` `main`; deploys with the next pipeline run.
+- **Bulk Batch Jobs page** in admin — pre-existing tenant-leak (admin sees other tenants' data). Fix is already in `meraki-admin-app` `main`; deploys with the next pipeline run.
 - **"Add Employee → auto-bridge"** is not yet wired — when an admin adds a new rep AFTER the founder graduated, the bridge needs to be re-run manually for the new rep to see prefit data. The fix is to hook the bridge call into the admin's Add-Employee flow; not yet done.
 - **Account brochure → vector embedding** — the uploaded brochure shows in Knowledge Base list but isn't yet indexed in Pinecone. Vectorization is async and runs on first AI use.
 
@@ -188,7 +189,7 @@ These are known and being tracked separately:
 | | URL | Credentials |
 |---|---|---|
 | Onboarding wizard | https://tie-onboarding.t2ai.live | Sign up fresh per tester |
-| Admin (founder lands here) | https://merakiadmin-staging.t2ai.ai | Same email/password as Onboarding signup |
+| Admin (founder logs in here) | https://merakiadmin-staging.t2ai.ai | Same email + password used on onboarding signup |
 | Employee (rep logs in) | https://merakiemployee-staging.t2ai.ai | Use email from "Add Employee" + password from welcome email |
 
 ---
