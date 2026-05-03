@@ -1,0 +1,111 @@
+name: Set up SSO handoff env vars on the VM
+
+# One-shot workflow. Run it from the Actions tab once you've added these to
+# the repo's Settings → Secrets and variables → Actions:
+#   secret  ONBOARDING_HANDOFF_SECRET   (32-byte hex, MUST match MerakiBackend's)
+#   variable MERAKI_ADMIN_APP_URL       (e.g. https://merakiadmin-staging.t2ai.ai)
+#
+# Existing secrets the deploy workflow already uses are reused: SSH_HOST,
+# SSH_USER, SSH_PRIVATE_KEY.
+#
+# What it does on the VM:
+#   1. Idempotently set/overwrite the two lines in /home/azureuser/tie-onboarding/.env
+#   2. Restart the tie-onboarding container so the new env takes effect
+#   3. Verify /api/onboarding/* is reachable + handoff route returns the
+#      auth-required response (proving the env loaded — a 503 here would mean
+#      the secret didn't make it).
+
+on:
+  workflow_dispatch:
+    inputs:
+      meraki_admin_app_url_override:
+        description: "Optional override for MERAKI_ADMIN_APP_URL (defaults to repo variable)"
+        required: false
+        default: ""
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate inputs
+        run: |
+          if [ -z "${{ secrets.ONBOARDING_HANDOFF_SECRET }}" ]; then
+            echo "::error ::Repo secret ONBOARDING_HANDOFF_SECRET not set. Add it under Settings → Secrets and variables → Actions, then re-run."
+            exit 1
+          fi
+          ADMIN_URL="${{ inputs.meraki_admin_app_url_override }}"
+          if [ -z "$ADMIN_URL" ]; then
+            ADMIN_URL="${{ vars.MERAKI_ADMIN_APP_URL }}"
+          fi
+          if [ -z "$ADMIN_URL" ]; then
+            echo "::error ::Neither input nor variable MERAKI_ADMIN_APP_URL is set. Add the variable or pass the input, then re-run."
+            exit 1
+          fi
+          echo "ADMIN_URL=$ADMIN_URL" >> "$GITHUB_ENV"
+
+      - name: Update .env on VM + restart container
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: ADMIN_URL
+          script: |
+            set -e
+            ENV_FILE="/home/azureuser/tie-onboarding/.env"
+            if [ ! -f "$ENV_FILE" ]; then
+              echo "ERROR: $ENV_FILE not found. Has the onboarding service been deployed at all?"
+              exit 1
+            fi
+
+            # Snapshot before edit, in case we need to roll back manually.
+            cp "$ENV_FILE" "$ENV_FILE.bak.$(date +%s)"
+
+            # upsert_env <KEY> <VALUE> — overwrites the existing line if present,
+            # otherwise appends. Comment-only lines aren't touched.
+            upsert_env() {
+              local KEY="$1"
+              local VAL="$2"
+              if grep -q "^${KEY}=" "$ENV_FILE"; then
+                sudo sed -i "s|^${KEY}=.*|${KEY}=${VAL}|" "$ENV_FILE"
+              else
+                echo "${KEY}=${VAL}" | sudo tee -a "$ENV_FILE" >/dev/null
+              fi
+            }
+
+            upsert_env "ONBOARDING_HANDOFF_SECRET" "${{ secrets.ONBOARDING_HANDOFF_SECRET }}"
+            upsert_env "ONBOARDING_HANDOFF_TTL_SECONDS" "120"
+            upsert_env "MERAKI_ADMIN_APP_URL" "$ADMIN_URL"
+
+            echo "Final SSO-related lines in $ENV_FILE:"
+            grep -E "^(ONBOARDING_HANDOFF_|MERAKI_ADMIN_APP_URL)" "$ENV_FILE" | sed 's/=.*/=<redacted>/'
+
+            # Restart the container so the new env takes effect.
+            echo "Restarting tie-onboarding container..."
+            sudo docker restart tie-onboarding
+            sleep 5
+
+            echo "Health check..."
+            for i in $(seq 1 10); do
+              code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:5101/health || echo 000)
+              echo "  attempt $i: $code"
+              [ "$code" = "200" ] && break
+              sleep 2
+            done
+
+      - name: Public smoke check (handoff route exists + reaches auth gate)
+        run: |
+          # Without auth, the route should return 401 ("No token provided"),
+          # which proves the route is registered AND the env loaded. A 503
+          # would mean ONBOARDING_HANDOFF_SECRET still isn't visible inside
+          # the container.
+          for i in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" -X POST https://tie-onboarding.t2ai.live/api/onboarding/company/dummy/handoff-token || echo 000)
+            echo "smoke $i: HTTP $code"
+            [ "$code" = "401" ] && exit 0
+            [ "$code" = "404" ] && { echo "::error ::Got 404 — handoff-token route not registered. Did the latest code deploy yet?"; exit 1; }
+            [ "$code" = "503" ] && { echo "::error ::Got 503 HANDOFF_DISABLED — the env var didn't reach the container. Try re-running this workflow or check container logs."; exit 1; }
+            sleep 3
+          done
+          echo "::error ::Smoke check never returned 401. Something else is wrong."
+          exit 1
