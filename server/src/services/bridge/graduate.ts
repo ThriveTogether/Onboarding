@@ -1387,14 +1387,19 @@ async function bridgeAccounts(
         discovery_date: new Date(repr.createdAt).toISOString(),
         research_date: new Date().toISOString(),
         research_source: 'meraki_onboarding',
-        relevance_score: matchPercent,
+        // The employee app renders relevance_score as `(score * 100).toFixed(1) + "%"`,
+        // so it expects a 0..1 fraction. matchPercent from onboarding is already a
+        // percentage (e.g. 87), so divide here. target_fit_score follows the same
+        // 0..1 convention (BKC reference: 0.9), with the deeper UI multiplying by 10
+        // for "x/10" badges. Without these scales, "87%" rendered as "8700%".
+        relevance_score: matchPercent / 100,
         score_breakdown: {
           product_fit: { score: repr.scoreBreakdown?.companyFit || 0, max_score: 30, reasoning: repr.intel?.matchRationale || '' },
           industry_match: { score: matchPercent / 5, max_score: 20, reasoning: `${repr.industry || ''} match` },
           geographic_relativity: { score: 15, max_score: 20, reasoning: repr.city || '' },
         },
         product_fit_analysis: {
-          target_fit_score: Math.round(matchPercent / 10),
+          target_fit_score: matchPercent / 100,
           target_fit_reasons: repr.intel?.matchRationale ? [repr.intel.matchRationale] : [],
           recommended_approach: repr.intel?.recommendedApproach || '',
         },
