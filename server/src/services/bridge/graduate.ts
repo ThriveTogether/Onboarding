@@ -199,8 +199,16 @@ export async function graduateToMerakiAdmin(
         email: founder.email.toLowerCase().trim(),
         onboarding_user_id: founder._id,
         onboarding_source: 'meraki_onboarding',
+        // Same bcrypt hash from the onboarding signup → founder logs in to
+        // MerakiPeople admin with the same email/password they used on
+        // tie-onboarding.t2ai.live, no separate registration needed.
+        // Only set on insert; if the founder later changes their password
+        // via the admin app's reset flow, re-graduation won't clobber it.
+        password: founder.passwordHash,
+        // Kept true so the (still-installed) /api/auth/sso/onboarding-handoff
+        // route remains usable as a future option, but everyday login uses
+        // password against the bcrypt hash above.
         is_authenticated_via_sso: true,
-        password: null,
         created_at: new Date(),
         graduated_at: new Date(),
       },

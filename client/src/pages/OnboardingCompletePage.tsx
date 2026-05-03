@@ -9,10 +9,20 @@ import {
   Flame,
   TrendingUp,
   Mail,
-  ArrowRight,
+  ExternalLink,
+  KeyRound,
 } from 'lucide-react';
 import { onboardingAPI } from '../api/onboarding';
+import { authAPI } from '../api/auth';
 import Card from '../components/Card';
+
+// Where graduated founders sign in. Compile-time fallback — production
+// builds should override via VITE_MERAKI_ADMIN_APP_URL. We read it via a
+// loose `any` cast because this client tsconfig doesn't pull in vite/client
+// types and we don't want to expand the type surface for a single env read.
+const MERAKI_ADMIN_URL =
+  ((import.meta as any).env?.VITE_MERAKI_ADMIN_APP_URL as string | undefined) ||
+  'https://merakiadmin-staging.t2ai.ai';
 
 // What we surface on the final screen, per item 11:
 //   (a) live counts — what the founder built / found
@@ -44,114 +54,34 @@ interface SessionSummary {
   }>;
 }
 
-// How long the celebratory Complete page sits before auto-redirecting into
-// MerakiPeople admin. Long enough to read the headline + counts, short enough
-// that it never feels like the page is stuck. The button is always available
-// for impatient founders to skip the wait.
-const AUTO_REDIRECT_DELAY_SECONDS = 5;
-
 export default function OnboardingCompletePage() {
   const { id } = useParams<{ id: string }>();
   const [summary, setSummary] = useState<SessionSummary | null>(null);
-  const [handoffState, setHandoffState] = useState<
-    | { kind: 'idle' }
-    | { kind: 'minting' }
-    | { kind: 'ready'; redirectUrl: string }
-    | { kind: 'unavailable'; reason: string }
-    | { kind: 'error'; message: string }
-  >({ kind: 'idle' });
-  const [autoRedirectIn, setAutoRedirectIn] = useState<number | null>(null);
+  const [founderEmail, setFounderEmail] = useState<string>('');
+  const [emailCopied, setEmailCopied] = useState(false);
 
-  // On mount, try to mint the handoff token in parallel with the summary
-  // load. If the bridge isn't configured yet (HANDOFF_DISABLED), we silently
-  // fall back to the "Team Meraki will reach out" card.
+  // Pull the logged-in founder's email so we can show it as the admin login
+  // hint without making them remember what they typed at signup.
   useEffect(() => {
-    if (!id) return;
-    let cancelled = false;
-    setHandoffState({ kind: 'minting' });
-    onboardingAPI
-      .handoffToken(id)
+    authAPI
+      .me()
       .then((res) => {
-        if (cancelled) return;
-        if (res.data?.redirectUrl) {
-          setHandoffState({ kind: 'ready', redirectUrl: res.data.redirectUrl });
-        } else {
-          setHandoffState({ kind: 'unavailable', reason: 'No redirect URL returned' });
-        }
+        const email = (res.data as any)?.user?.email || '';
+        if (email) setFounderEmail(email);
       })
-      .catch((err) => {
-        if (cancelled) return;
-        const code = err?.response?.data?.code;
-        if (err?.response?.status === 503 || code === 'HANDOFF_DISABLED') {
-          setHandoffState({
-            kind: 'unavailable',
-            reason: 'SSO handoff not configured on the server',
-          });
-        } else {
-          setHandoffState({
-            kind: 'error',
-            message: err?.response?.data?.error || err?.message || 'Could not mint handoff token',
-          });
-        }
+      .catch(() => {
+        /* email shown as blank — they can still type it manually on the admin login */
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [id]);
+  }, []);
 
-  // Once the handoff token is ready, auto-redirect after a short delay so a
-  // returning founder (resume-from-anywhere → /onboarding/complete/<id>)
-  // doesn't sit on a celebration screen they've already seen. They can still
-  // click the button to skip the wait.
-  useEffect(() => {
-    if (handoffState.kind !== 'ready') {
-      setAutoRedirectIn(null);
-      return;
-    }
-    setAutoRedirectIn(AUTO_REDIRECT_DELAY_SECONDS);
-    const tick = setInterval(() => {
-      setAutoRedirectIn((current) => {
-        if (current === null) return null;
-        if (current <= 1) {
-          clearInterval(tick);
-          window.location.href = (handoffState as any).redirectUrl;
-          return 0;
-        }
-        return current - 1;
-      });
-    }, 1000);
-    return () => clearInterval(tick);
-  }, [handoffState]);
-
-  const openMerakiPeople = async () => {
-    if (!id) return;
-    // If we already have a fresh URL, use it. Otherwise re-mint (handles the
-    // case where the founder sat on this page longer than the 120s TTL).
-    if (handoffState.kind === 'ready') {
-      window.location.href = handoffState.redirectUrl;
-      return;
-    }
-    setHandoffState({ kind: 'minting' });
+  const copyEmail = async () => {
+    if (!founderEmail) return;
     try {
-      const res = await onboardingAPI.handoffToken(id);
-      if (res.data?.redirectUrl) {
-        window.location.href = res.data.redirectUrl;
-      } else {
-        setHandoffState({ kind: 'error', message: 'No redirect URL returned' });
-      }
-    } catch (err: any) {
-      const code = err?.response?.data?.code;
-      if (err?.response?.status === 503 || code === 'HANDOFF_DISABLED') {
-        setHandoffState({
-          kind: 'unavailable',
-          reason: 'SSO handoff not configured on the server',
-        });
-      } else {
-        setHandoffState({
-          kind: 'error',
-          message: err?.response?.data?.error || err?.message || 'Handoff failed',
-        });
-      }
+      await navigator.clipboard.writeText(founderEmail);
+      setEmailCopied(true);
+      setTimeout(() => setEmailCopied(false), 2000);
+    } catch {
+      /* clipboard API unavailable — manual select still works */
     }
   };
 
@@ -327,76 +257,129 @@ export default function OnboardingCompletePage() {
           </Card>
         )}
 
-        {/* Hand-off — seamless SSO into MerakiPeople admin. If the bridge is
-            unconfigured (e.g. dev or staging without the secret), we fall
-            back to the "Team Meraki will reach out" card instead of showing
-            a broken button. */}
-        {handoffState.kind === 'unavailable' ? (
-          <Card padding="lg" tone="tinted" className="mp-text-center">
+        {/* Sign-in card — show the founder the admin URL + their email + a
+            password reminder. They click Open MerakiPeople, which takes them
+            to the admin sign-in page where they enter the same email/password
+            they used to sign up here. The bridge has already mirrored their
+            bcrypt hash into meraki_admin.users so the same password works. */}
+        <Card padding="lg" tone="tinted">
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              marginBottom: 12,
+            }}
+          >
             <div
               style={{
-                width: 48,
-                height: 48,
+                width: 40,
+                height: 40,
                 borderRadius: '50%',
                 background: 'var(--bg-brand-soft)',
                 color: 'var(--mp-indigo)',
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginBottom: 10,
+                flexShrink: 0,
               }}
             >
-              <Mail size={22} strokeWidth={2} />
+              <KeyRound size={20} strokeWidth={2} />
             </div>
-            <h3 className="mp-h4" style={{ margin: '0 0 6px' }}>Team Meraki will reach out shortly</h3>
-            <p className="mp-body-sm mp-muted" style={{ margin: 0 }}>
-              We'll walk you through the leads, your strategy docs, and how to start your first conversations. Keep an eye on your inbox.
-            </p>
-          </Card>
-        ) : (
-          <Card padding="lg" tone="tinted" className="mp-text-center">
-            <div
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: '50%',
-                background: 'var(--bg-brand-soft)',
-                color: 'var(--mp-indigo)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: 10,
-              }}
-            >
-              <ArrowRight size={22} strokeWidth={2} />
-            </div>
-            <h3 className="mp-h4" style={{ margin: '0 0 6px' }}>Your MerakiPeople workspace is ready</h3>
-            <p className="mp-body-sm mp-muted" style={{ margin: '0 0 16px' }}>
-              Your company profile, target accounts, hunted leads, strategy docs and customised AI prompts are already loaded.
-              {handoffState.kind === 'ready' && autoRedirectIn !== null && autoRedirectIn > 0 && (
-                <> Redirecting in <strong>{autoRedirectIn}s</strong> — or skip the wait below.</>
-              )}
-            </p>
-            <button
-              type="button"
-              className="mp-btn mp-btn-primary"
-              onClick={openMerakiPeople}
-              disabled={handoffState.kind === 'minting'}
-              style={{ minWidth: 220 }}
-            >
-              {handoffState.kind === 'minting'
-                ? 'Preparing your workspace…'
-                : handoffState.kind === 'ready' && autoRedirectIn !== null && autoRedirectIn > 0
-                ? `Open MerakiPeople now →`
-                : 'Open MerakiPeople →'}
-            </button>
-            {handoffState.kind === 'error' && (
-              <p className="mp-body-xs" style={{ marginTop: 10, color: 'var(--mp-coral)' }}>
-                {handoffState.message} — Team Meraki will reach out instead.
+            <div>
+              <h3 className="mp-h4" style={{ margin: 0 }}>
+                Sign in to MerakiPeople
+              </h3>
+              <p className="mp-body-sm mp-muted" style={{ margin: '2px 0 0' }}>
+                Your workspace is ready — company, leads, strategy docs and AI prompts already loaded.
               </p>
-            )}
-          </Card>
-        )}
+            </div>
+          </div>
+
+          <div
+            className="mp-overline"
+            style={{ marginBottom: 6 }}
+          >
+            Sign-in URL
+          </div>
+          <a
+            href={MERAKI_ADMIN_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mp-btn mp-btn-primary"
+            style={{
+              width: '100%',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              marginBottom: 16,
+              textDecoration: 'none',
+            }}
+          >
+            <ExternalLink size={16} strokeWidth={2} />
+            Open MerakiPeople admin
+          </a>
+
+          <div
+            className="mp-overline"
+            style={{ marginBottom: 6 }}
+          >
+            Your credentials
+          </div>
+          <div
+            style={{
+              background: 'var(--bg-app)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 8,
+              padding: 12,
+              fontFamily: 'monospace',
+              fontSize: 14,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                marginBottom: 8,
+              }}
+            >
+              <Mail size={14} strokeWidth={2} className="mp-muted" />
+              <span style={{ flex: 1 }}>
+                {founderEmail || <span className="mp-muted">(loading…)</span>}
+              </span>
+              {founderEmail && (
+                <button
+                  type="button"
+                  onClick={copyEmail}
+                  className="mp-btn mp-btn-ghost mp-btn-sm"
+                  style={{ minWidth: 70 }}
+                >
+                  {emailCopied ? '✓ Copied' : 'Copy'}
+                </button>
+              )}
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                color: 'var(--text-muted)',
+              }}
+            >
+              <KeyRound size={14} strokeWidth={2} />
+              <span>The password you set when signing up here.</span>
+            </div>
+          </div>
+
+          <p
+            className="mp-body-xs mp-muted"
+            style={{ marginTop: 12, marginBottom: 0 }}
+          >
+            Forgot it? Use the <strong>Forgot password</strong> link on the sign-in page to reset.
+          </p>
+        </Card>
       </div>
     </div>
   );
