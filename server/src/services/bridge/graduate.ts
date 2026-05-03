@@ -180,7 +180,14 @@ export async function graduateToMerakiAdmin(
         website: company.websiteUrl || '',
         description: companyDescription(company),
         intelligence_data: buildIntelligenceData(company),
-        current_onboarding_step: 'graduated',
+        // Both signals tell the admin app's RootRedirect + SignIn redirect
+        // logic that this company is fully set up and should land on the
+        // main dashboard, NOT the in-admin /company-setup wizard. Without
+        // these, graduated founders get bounced into the (now-redundant)
+        // 4-step setup wizard inside admin even though we already did
+        // everything that wizard would do.
+        current_onboarding_step: 'completed',
+        quick_setup_complete: true,
         created_by: founder._id.toString(),
         updated_at: new Date(),
       },

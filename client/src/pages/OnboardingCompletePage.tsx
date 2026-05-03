@@ -356,9 +356,13 @@ export default function OnboardingCompletePage() {
             </span>
           </p>
 
-          {/* Primary action: open the admin sign-in page in a new tab */}
+          {/* Primary action: open the admin sign-in page in a new tab. We
+              link to /signin explicitly (not domain root) so the founder
+              always lands on the sign-in form — root route does its own
+              auth-state-aware redirecting that can take them somewhere
+              unexpected if a stale token is around. */}
           <a
-            href={MERAKI_ADMIN_URL}
+            href={`${MERAKI_ADMIN_URL.replace(/\/+$/, '')}/signin`}
             target="_blank"
             rel="noopener noreferrer"
             className="mp-btn mp-btn--primary mp-btn--block"
