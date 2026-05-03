@@ -18,7 +18,9 @@ export interface ITargetProfile {
   companySize: string;
   salesTeamSize: string;
   industryFocus: string;
-  decisionMakers: string[];
+  // v2 prompts emit decisionMakers as either string[] (legacy) or
+  // [{title, buyingRole}] — both shapes round-trip through Mixed.
+  decisionMakers: any[];
   painSignals: string[];
   locked: boolean;
   approvedAt: Date | null;
@@ -26,6 +28,16 @@ export interface ITargetProfile {
   variantThesis?: string;
   confidenceNotes?: string;
   isSelected?: boolean;
+  // v2 (prompt-driven) additions — all optional so legacy candidates still load.
+  whoTheyAre?: string;
+  revenueRange?: string;
+  industryFocusDetail?: string;
+  techStackSignals?: string[];
+  whatTheyNeed?: string;
+  buyingTriggers?: string[];
+  qualifyIf?: string[];
+  disqualifyIf?: string[];
+  outreachApproach?: any; // {primaryChannel, openingAngle, firstTouchStyle}
 }
 
 export type MessageStage = 'cold' | 'warming' | 'hot';
@@ -203,7 +215,9 @@ const OnboardingCompanySchema = new Schema<IOnboardingCompany>(
       companySize: { type: String, default: '' },
       salesTeamSize: { type: String, default: '' },
       industryFocus: { type: String, default: '' },
-      decisionMakers: [{ type: String }],
+      // Mixed so v2 prompt's [{title, buyingRole}] round-trips alongside
+      // legacy string-array shape — bridge + UI handle both via duck-typing.
+      decisionMakers: [Schema.Types.Mixed],
       painSignals: [{ type: String }],
       locked: { type: Boolean, default: false },
       approvedAt: { type: Date, default: null },
@@ -211,6 +225,16 @@ const OnboardingCompanySchema = new Schema<IOnboardingCompany>(
       variantThesis: { type: String, default: '' },
       confidenceNotes: { type: String, default: '' },
       isSelected: { type: Boolean, default: true },
+      // v2 prompt-driven additions — kept loose so future prompt evolutions
+      // don't need a schema migration.
+      whoTheyAre: { type: String, default: '' },
+      revenueRange: { type: String, default: '' },
+      techStackSignals: [{ type: String }],
+      whatTheyNeed: { type: String, default: '' },
+      buyingTriggers: [{ type: String }],
+      qualifyIf: [{ type: String }],
+      disqualifyIf: [{ type: String }],
+      outreachApproach: { type: Schema.Types.Mixed, default: null },
     },
     targetProfileCandidates: [
       {
@@ -218,7 +242,7 @@ const OnboardingCompanySchema = new Schema<IOnboardingCompany>(
         companySize: { type: String, default: '' },
         salesTeamSize: { type: String, default: '' },
         industryFocus: { type: String, default: '' },
-        decisionMakers: [{ type: String }],
+        decisionMakers: [Schema.Types.Mixed],
         painSignals: [{ type: String }],
         locked: { type: Boolean, default: false },
         approvedAt: { type: Date, default: null },
@@ -226,6 +250,14 @@ const OnboardingCompanySchema = new Schema<IOnboardingCompany>(
         variantThesis: { type: String, default: '' },
         confidenceNotes: { type: String, default: '' },
         isSelected: { type: Boolean, default: false },
+        whoTheyAre: { type: String, default: '' },
+        revenueRange: { type: String, default: '' },
+        techStackSignals: [{ type: String }],
+        whatTheyNeed: { type: String, default: '' },
+        buyingTriggers: [{ type: String }],
+        qualifyIf: [{ type: String }],
+        disqualifyIf: [{ type: String }],
+        outreachApproach: { type: Schema.Types.Mixed, default: null },
       },
     ],
     successMetric: { type: String, default: '' },

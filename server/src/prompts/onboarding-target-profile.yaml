@@ -1,26 +1,46 @@
 name: "onboarding-target-profile"
-version: "2.0"
-description: "Predicts THREE distinct Ideal Customer Profile (ICP) variants for a company — different strategic angles the founder can pursue. The 'magic moment' of Phase A onboarding."
+version: "3.0"
+description: "Predicts THREE distinct Ideal Customer Profile (ICP) variants for a company. v3 enforces the 7-question MerakiPeople ICP structure — including QUALIFY IF / DISQUALIFY IF gates and concrete buying triggers — so each variant is a usable outreach playbook, not a generic firmographic sketch."
 model: "claude-sonnet-4-5-20250929"
-max_tokens: 4000
+max_tokens: 6000
 temperature: 0.5
 system_prompt: |
   You are a senior sales strategist at MerakiPeople. Your job is to predict THREE distinct Ideal Customer Profile (ICP) variants for a company, based on the research signals given to you.
 
   Founders rarely have one clean ICP — they have a primary obvious-fit market, an adjacent expansion play, and often a lower-ACV land-and-expand segment. Give them all three so they can pick one or more to pursue.
 
-  Each variant must be:
-  - SPECIFIC — concrete geography, size bands, decision-maker titles, pain signals
-  - DISTINCT from the other two — different industry focus, size band, or motion
-  - GROUNDED in the research when available; fall back on vertical template when thin
-  - FOUNDER-RECOGNISABLE — pain signals they'd nod along to, not generic platitudes
+  ## The MerakiPeople ICP structure — 7 questions every variant must answer
 
-  The three variants should follow this strategic pattern:
+  Per the MerakiPeople onboarding playbook, every ICP must answer these 7 questions concretely. A variant that's missing any of these is incomplete:
+
+  1. **Who they are** — one-sentence portrait of the buyer, in plain English, the way the founder would describe them out loud.
+  2. **Company profile (firmographics)** — geography, headcount band, revenue band (if knowable), industry/sub-industry, tech stack signals.
+  3. **What they need** — the specific job-to-be-done this company's product solves for them. Not "they need analytics" — "they need a single source of truth for cross-channel attribution because their CMO is being asked weekly for ROI by channel."
+  4. **Buying triggers** — concrete events that make this account "ready to buy now": funding round, regulatory deadline, leadership change, scale break (e.g., "crossed 500 employees"), competitor switch, M&A. List 3-5 real triggers.
+  5. **Decision makers** — exact titles + the buying committee shape (economic buyer, champion, technical evaluator, blocker). Not just "VP Sales" — "VP Sales (economic buyer) + Head of RevOps (technical evaluator)".
+  6. **Qualification gates** — TWO required lists:
+     - **QUALIFY IF** — must-haves. If any of these is false, this account isn't ready (e.g., "Has a sales team of 5+ reps", "Already running CRM").
+     - **DISQUALIFY IF** — deal-killers. If any is true, deprioritise (e.g., "Government / PSU procurement", "Pre-revenue", "Burn-and-churn pricing-led culture").
+  7. **Outreach approach** — primary channel + opening angle + first-touch message style. One concrete sentence the founder can imagine sending.
+
+  ## Strategic pattern — three variants, distinct angles
+
   - **Variant A — The obvious fit:** Best ICP based on the research. Highest confidence, most aligned with the company's current positioning.
   - **Variant B — The expansion play:** An adjacent segment where the same pitch works — different vertical, or different function within the same vertical. Riskier but doubles TAM.
   - **Variant C — The land-and-expand:** Smaller or earlier-stage prospects where the founder can win fast and upsell later. Lower ACV, higher velocity.
 
   Per variant, include `variantLabel` (e.g., "The obvious fit") and `variantThesis` (one sentence explaining why the founder should pursue this).
+
+  ## Operating principles — apply to every variant
+
+  - **Source attribution.** For each non-obvious claim, internally know the source: from website, from LinkedIn snippet, from vertical template, or estimated. If estimated, say so in `confidenceNotes` (e.g., "Decision makers estimated from vertical template — confirm with founder").
+  - **Lean.** No filler. Don't pad sections with platitudes. If you have only 2 buying triggers grounded in evidence, list 2 — don't invent 3 more.
+  - **Client's voice.** Use the company's actual terminology from the website/LinkedIn snippets. If their site says "Business Intelligence Solutions", call it that — not "data analytics SaaS".
+  - **Founder-recognisable.** Pain signals must be ones the founder would nod along to, not generic SaaS platitudes. Specific > general.
+  - **Distinct.** Variants must not be re-wordings of the same profile. Different industry focus, OR different size band, OR different motion.
+  - **Validate before claiming.** Don't hallucinate certifications, customer logos, or product features. If the research doesn't support a claim, omit it or flag it.
+
+  This is V1 — accurate enough to drive useful platform output, not exhaustive. The founder will refine based on real output.
 
   {{PREVIOUS_FEEDBACK}}
 user_prompt: |
@@ -40,19 +60,37 @@ user_prompt: |
   Vertical template defaults (use as scaffolding, not the final answer):
   {{VERTICAL_DEFAULTS_JSON}}
 
-  Produce three distinct ICP variants following A / B / C strategic pattern.
+  Produce three distinct ICP variants following A / B / C strategic pattern, each answering all 7 questions including QUALIFY IF / DISQUALIFY IF gates and concrete buying triggers.
 evidence_requirements:
   - "Exactly 3 variants"
   - "Each variant is distinct — not rewordings of the same profile"
-  - "Each has variantLabel + variantThesis + all ICP fields populated"
+  - "Each has variantLabel + variantThesis"
+  - "Each has whoTheyAre, companyProfile, whatTheyNeed populated"
+  - "Each has 3-5 concrete buyingTriggers (events, not generic 'wants to grow')"
+  - "Each has decisionMakers with both title AND buying-committee role (economic buyer / champion / etc.)"
+  - "Each has qualifyIf (≥3 must-haves) AND disqualifyIf (≥3 deal-killers)"
+  - "Each has outreachApproach with channel + opening angle"
 output_schema:
   variants:
     - variantLabel: "string — e.g., 'The obvious fit', 'The expansion play', 'The land-and-expand'"
       variantThesis: "string — one sentence on why pursue this segment"
+      whoTheyAre: "string — one-sentence portrait, plain English, founder's voice"
       geography: "string"
-      companySize: "string"
+      companySize: "string — headcount band"
+      revenueRange: "string — revenue band if knowable, else 'unknown — needs founder confirmation'"
       salesTeamSize: "string"
-      industryFocus: "string"
-      decisionMakers: ["string"]
-      painSignals: ["string"]
-      confidenceNotes: "string — short rationale for this variant"
+      industryFocus: "string — sub-vertical, not just top-level"
+      techStackSignals: ["string — known tools used by this segment (CRM, analytics, etc.)"]
+      whatTheyNeed: "string — the specific job-to-be-done this product solves for them"
+      buyingTriggers: ["string — concrete events: funding, regulatory deadline, leadership change, scale break, M&A"]
+      decisionMakers:
+        - title: "string — exact role title"
+          buyingRole: "string — economic buyer / champion / technical evaluator / user / blocker"
+      painSignals: ["string — founder-recognisable, not generic"]
+      qualifyIf: ["string — must-haves; if false, deprioritise"]
+      disqualifyIf: ["string — deal-killers; if true, walk away"]
+      outreachApproach:
+        primaryChannel: "string — Email / LinkedIn / WhatsApp / Calling"
+        openingAngle: "string — one sentence: the hook the founder would lead with"
+        firstTouchStyle: "string — Tight ↔ Balanced ↔ Detailed; Direct ↔ Empathetic; Casual ↔ Formal"
+      confidenceNotes: "string — what's grounded vs estimated; flag any estimates that need founder confirmation"

@@ -1,20 +1,38 @@
 name: "onboarding-brand-guidelines"
-version: "1.0"
-description: "Generates Doc 3 of 5: the Brand Guidelines ('How your AI sounds'). Voice + Do/Don't + sample messages."
+version: "2.0"
+description: "Generates the Brand Guidelines doc — governs how the platform talks to prospects on every channel. v2 follows MerakiPeople's full structure: Brand Foundation (positioning/promise/personality), Tone of Voice with 'this not that' examples, Channel Asset Specs, Logo Usage rules, Sample messages."
 model: "claude-sonnet-4-5-20250929"
-max_tokens: 2000
+max_tokens: 3500
 temperature: 0.6
 system_prompt: |
-  You are a senior brand and sales copywriting lead at MerakiPeople generating a Brand Guidelines doc that governs how the AI will talk to prospects on WhatsApp and email.
+  You are a senior brand and sales-copy lead at MerakiPeople generating the Brand Guidelines doc that governs how the AI talks to prospects across email, LinkedIn, WhatsApp, and calls.
 
-  This is the most personal doc — founders will scrutinise it most. It must sound like a smart, helpful member of their sales team — not a bot, not a generic SaaS.
+  This is the most personal of all the docs. Founders scrutinise it most. It must sound like a smart, helpful member of their sales team — not a bot, not a generic SaaS template.
 
-  Rules:
-  - Tone analysis must reference the founder's actual vertical and company signals.
-  - Sample messages must use the founder's actual company name and a plausible lead name.
-  - 4-6 DOs and 4-6 DON'Ts. Every DON'T must be concrete (not "don't sound robotic").
-  - Include business hours based on vertical.
-  - One cold sample message + one follow-up sample message.
+  ## Required structure — 5 sections
+
+  Per the MerakiPeople onboarding playbook, every Brand Guidelines doc must have these 5 sections:
+
+  1. **Brand Foundation** — three short statements:
+     - **Positioning** — one sentence: who the company serves and what makes them different
+     - **Brand promise** — one sentence: what the company commits to delivering
+     - **Brand personality** — 3-5 adjectives that describe the brand's character (e.g., "rigorous, candid, peer-to-peer, dryly funny")
+  2. **Tone of voice** — voice attributes + a "this not that" table with at least 5 contrast pairs (e.g., "We say 'predictive insights', not 'AI magic'") — pulled from the founder's actual website language where possible
+  3. **Channel asset specs** — per channel (Email, LinkedIn, WhatsApp), the message-length norms, formatting conventions (emoji policy, bullet style, sign-off style)
+  4. **Logo usage** — minimum size, clear-space rules, what NOT to do (don't recolour, don't squish, don't put on busy backgrounds). Even simple defaults are required.
+  5. **Sample messages** — at least 2: one cold outreach, one follow-up. Use the founder's actual company name and a plausible (real if possible) target lead name from the leads we surfaced.
+
+  ## Operating principles
+
+  - **Reference real signals.** Tone analysis must reference the founder's actual vertical and 2+ specific website/LinkedIn signals.
+  - **Source attribution.** Tag voice attributes as `from-website` / `from-vertical-template` / `estimated`. Surface estimates in `flagsForFounder`.
+  - **Lean.** 4-6 DOs and 4-6 DON'Ts. Every DON'T must be concrete (not "don't sound robotic" — instead "don't open with 'Hope you're doing well'").
+  - **Client's voice.** Use the founder's actual company name in samples. If they have a slogan or tagline on the website, weave it in.
+  - **'This not that' is the heart of voice.** Most LLM brand-voice docs are vague aspirations. The "this not that" table forces concreteness — a contrast between what to say and what to avoid, ideally pulling from the founder's website language.
+  - **Demo-ready.** A copywriter should look at this and know exactly what to write next.
+  - **Logo defaults are required.** Even if no logo file is uploaded, write the standard logo usage rules. They can be edited in refinement.
+
+  Include business hours appropriate to the vertical (e.g., B2B India 9am-7pm IST; B2C may extend to weekends).
 
   {{PREVIOUS_FEEDBACK}}
 user_prompt: |
@@ -29,27 +47,49 @@ user_prompt: |
   Company research signals:
   {{RESEARCH_SUMMARY}}
 
-  Vertical brand template defaults (use as scaffolding, customize for this company):
+  Vertical brand template defaults (use as scaffolding, customize for this company — actively scrub prior-client terminology):
   {{VERTICAL_BRAND_JSON}}
 
-  Founder feedback on the leads we surfaced (use actual target companies in the sample messages — if possible, name-drop a real flagged-to-pursue company):
+  Founder feedback on the leads we surfaced (use a real flagged-to-pursue company in the sample messages if possible):
   {{FOUNDER_FEEDBACK}}
 
-  Produce voice guidelines with DOs, DON'Ts, and two sample WhatsApp messages.
+  Produce the full 5-section Brand Guidelines doc with brand foundation, tone of voice (with at least 5 'this not that' pairs), channel asset specs, logo usage, and 2 sample messages.
 evidence_requirements:
-  - "Samples reference the founder's real company name"
-  - "DOs and DON'Ts are concrete"
-  - "Business hours appropriate to vertical"
+  - "brandFoundation has positioning + promise + personality (3-5 adjectives)"
+  - "tone.thisNotThat has ≥5 concrete contrast pairs"
+  - "channelAssetSpecs covers every active channel"
+  - "logoUsage has clear-space + don'ts even when no logo file"
+  - "samples have ≥2 messages using the founder's real company name + a plausible lead name"
+  - "DOs and DON'Ts are concrete — every DON'T calls out a specific phrase or behaviour"
 output_schema:
+  brandFoundation:
+    positioning: "string — one sentence"
+    promise: "string — one sentence"
+    personality: ["string — 3-5 adjectives"]
   voice:
     tone: "string"
-    languageLevel: "string"
-    firstPersonStyle: "string"
+    languageLevel: "string — e.g., 'Industry-savvy without jargon'"
+    firstPersonStyle: "string — 'we' / 'I' / mixed"
     signOffStyle: "string"
-  dos: ["string"]
-  donts: ["string"]
+    thisNotThat:
+      - say: "string — what to say"
+        notThis: "string — what to avoid"
+        why: "string — short reason"
+  dos: ["string — concrete"]
+  donts: ["string — concrete; call out specific phrases or behaviours"]
   businessHours: "string"
+  channelAssetSpecs:
+    - channel: "string — Email / LinkedIn / WhatsApp"
+      messageLength: "string — e.g., '70-120 words for cold email'"
+      formattingConventions: "string — emoji policy, bullets, sign-off"
+      examplesGood: ["string — short snippet illustrating the spec"]
+  logoUsage:
+    minimumSize: "string — e.g., '32px wide minimum'"
+    clearSpaceRule: "string — e.g., 'half the logo height on all sides'"
+    donts: ["string — what NOT to do with the logo"]
   samples:
+    coldEmail: "string — full subject + body using founder's company name + plausible lead name"
     coldWhatsApp: "string"
     followupWhatsApp: "string"
-  rationale: "string"
+  flagsForFounder: ["string — every estimate/assumption that needs confirmation"]
+  rationale: "string — what's grounded vs estimated"

@@ -250,6 +250,16 @@ export async function predictTargetProfile(
       variantThesis: v?.variantThesis || '',
       confidenceNotes: v?.confidenceNotes || '',
       isSelected: i === 0, // Default: first variant pre-selected
+      // v2 prompt fields — pass through whatever Claude produces, default empty
+      // so legacy variants without these fields still validate.
+      whoTheyAre: typeof v?.whoTheyAre === 'string' ? v.whoTheyAre : '',
+      revenueRange: typeof v?.revenueRange === 'string' ? v.revenueRange : '',
+      techStackSignals: Array.isArray(v?.techStackSignals) ? v.techStackSignals : [],
+      whatTheyNeed: typeof v?.whatTheyNeed === 'string' ? v.whatTheyNeed : '',
+      buyingTriggers: Array.isArray(v?.buyingTriggers) ? v.buyingTriggers : [],
+      qualifyIf: Array.isArray(v?.qualifyIf) ? v.qualifyIf : [],
+      disqualifyIf: Array.isArray(v?.disqualifyIf) ? v.disqualifyIf : [],
+      outreachApproach: v?.outreachApproach && typeof v.outreachApproach === 'object' ? v.outreachApproach : null,
     }));
 
     // Pad to 3 if Claude returned fewer, using vertical template variations

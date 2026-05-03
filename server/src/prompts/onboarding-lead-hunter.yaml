@@ -1,6 +1,6 @@
 name: "onboarding-lead-hunter"
-version: "1.0"
-description: "Generates a list of AI-suggested prospects (real companies, plausible contact names/titles) matching the company's locked target profile. Output is flagged as requiring human verification before outreach — this is NOT a lead enrichment service."
+version: "2.0"
+description: "Generates a list of AI-suggested prospects matching the company's locked target profile. v2 enforces the MerakiPeople qualification discipline — every lead must pass the ICP's QUALIFY IF gates and fail none of the DISQUALIFY IF deal-killers. Output is flagged as requiring human verification before outreach — this is NOT a lead enrichment service."
 model: "claude-sonnet-4-5-20250929"
 max_tokens: 8000
 temperature: 0.7
@@ -12,18 +12,37 @@ system_prompt: |
   - For contacts, generate plausible seniority-appropriate names and titles. You MUST NOT invent email addresses, phone numbers, or LinkedIn URLs — those come from real enrichment tools downstream.
   - Every lead must have `verificationNeeded: true`. This is a demo/triage view, not an outreach-ready list.
 
-  Rules for the shortlist:
+  ## Apply the ICP's qualification discipline (NEW in v2)
+
+  The locked target profile passed in {{TARGET_PROFILE_JSON}} now includes explicit qualification gates per the MerakiPeople onboarding playbook:
+  - **qualifyIf** — must-haves; if false, the lead isn't ready
+  - **disqualifyIf** — deal-killers; if true, walk away
+  - **buyingTriggers** — events that make a lead "ready now"
+
+  Apply this discipline silently to every lead you generate:
+  1. Every lead MUST plausibly satisfy ALL qualifyIf must-haves. (E.g., if qualifyIf says "Has 5+ sales reps", don't propose a 3-person consultancy.)
+  2. NO lead should match any disqualifyIf condition. (E.g., if disqualifyIf says "Government / PSU procurement", skip every PSU.)
+  3. Where possible, prefer leads showing one of the listed buyingTriggers — surface that trigger in `matchRationale` (e.g., "Just raised Series B in Mar 2026 — fits 'recent funding round' trigger").
+  4. The `qualificationNotes` field per lead must call out which qualifyIf items the lead clearly satisfies and any disqualifyIf items you considered and ruled out.
+
+  ## Shortlist rules
+
   - Return exactly {{LEAD_COUNT}} leads.
   - No duplicate target companies. No duplicate contact names across the batch.
   - Diversify contact names — vary first names (don't overuse "Karthik" or "Priya"), mix genders, mix surnames by region.
   - All target companies must plausibly match the ICP's geography, size, and industry focus. If the ICP says Tier 1 India + 50-500 employees + B2B SaaS, don't return a 5000-person US company.
-  - Match percent should be **65–95**, reflecting plausible fit. Sprinkle a few 90+ leads, most 70–85.
-  - Titles must be seniority-appropriate for each company's size (a 20-person startup has a "Head of Sales", not a "VP of Global Sales").
-  - Include a short `matchRationale` (one sentence) per lead explaining why this company fits the ICP.
+  - Match percent should be **65–95**, reflecting plausible fit. Sprinkle a few 90+ leads (those with explicit buying triggers), most 70–85.
+  - Titles must be seniority-appropriate for each company's size (a 20-person startup has a "Head of Sales", not a "VP of Global Sales"). Match the ICP's `decisionMakers` array — pick titles from there or close adjacencies.
+  - Include a short `matchRationale` (one sentence) per lead explaining why this company fits the ICP. Make it CONCRETE — reference firmographics, a known initiative, or a buying trigger.
   - Industry label should be the sub-vertical (e.g., "Vertical SaaS", "Fintech", "Metal Fabrication") — not just the top-level vertical.
-  - Score breakdown (companyFit/engagement/intent/recency) should reflect early-stage signals: companyFit populated (25-35), engagement + intent low (0-15), recency low (0-10).
+  - Score breakdown (companyFit/engagement/intent/recency) should reflect early-stage signals: companyFit populated (25-35), engagement + intent low (0-15), recency low (0-10). Bump intent slightly higher (10-15) for leads with explicit buying triggers.
 
-  Do NOT invent companies. If you can't think of enough real companies, return fewer leads — but aim for {{LEAD_COUNT}}.
+  ## Operating principles
+
+  - **Source attribution.** For each lead, internally know whether you're proposing it from prior knowledge (well-known firm) or pattern-matching the ICP (more speculative). Reflect that in `dataConfidence`: `high` for well-known recognisable firms, `medium` for plausible-but-less-famous matches.
+  - **Validate.** Don't invent companies. If you can't think of enough real companies, return fewer leads — but aim for {{LEAD_COUNT}}.
+  - **Lean.** Don't pad rationales with platitudes. "Strong product-market fit" is filler. "Just expanded to Bangalore + hired Head of Marketing in Apr 2026" is a signal.
+  - **Client's voice.** Use the founder's own product terminology in the `recommendedApproach` first-message hook.
 
   {{PREVIOUS_FEEDBACK}}
 user_prompt: |
@@ -33,36 +52,42 @@ user_prompt: |
   Vertical: {{VERTICAL_DISPLAY_NAME}}
   Website: {{WEBSITE_URL}}
 
-  Approved target profile:
+  Approved target profile (apply qualifyIf / disqualifyIf gates silently to every lead):
   {{TARGET_PROFILE_JSON}}
 
   Company research signals:
   {{RESEARCH_SUMMARY}}
 
-  Return {{LEAD_COUNT}} plausible prospects.
+  Return {{LEAD_COUNT}} plausible prospects. Each must satisfy all qualifyIf must-haves and fail no disqualifyIf condition. Prefer leads with at least one buyingTrigger from the ICP — call it out in matchRationale.
 evidence_requirements:
   - "All target companies are real, recognisable firms in the target vertical + region"
+  - "Every lead plausibly satisfies the ICP's qualifyIf gates and matches no disqualifyIf condition"
+  - "qualificationNotes per lead calls out which qualifyIf items are satisfied"
   - "Contact names are plausible and seniority-appropriate"
-  - "Match % distributed 65-95 with most 70-85"
+  - "Match % distributed 65-95 with most 70-85; 90+ reserved for leads with explicit buying triggers"
   - "No company or contact-name duplicates in the batch"
+  - "dataConfidence per lead is honest: high for well-known firms, medium for plausible-but-speculative"
 output_schema:
   leads:
     - targetCompany: "string"
       companyDescription: "string — one concise line: what they do + sub-vertical + rough size. Example: 'Sales enablement SaaS, Series E, ~700 employees'"
       city: "string"
-      industry: "string"
+      industry: "string — sub-vertical"
       employeeRange: "string"
       contactName: "string"
       contactTitle: "string"
       matchPercent: "number (65-95)"
-      matchRationale: "string — one sentence, why this COMPANY fits the ICP. Make it concrete, not generic."
+      matchRationale: "string — one sentence, why this COMPANY fits the ICP. Concrete signal, not generic."
+      buyingTriggerSignal: "string — if any of the ICP's buyingTriggers applies, call it out (e.g., 'recent Series B Mar 2026'). Else empty."
+      qualificationNotes: "string — which qualifyIf items this lead satisfies, and any disqualifyIf items you ruled out"
       department: "string — e.g., 'Sales & Revenue', 'Growth', 'Executive Leadership'"
       seniority: "string — 'C-Suite / Founder', 'VP', 'Head / Director', or 'Manager'"
-      relevanceReason: "string — one sentence on why THIS PERSON in THIS ROLE matters for the seller's pain point. Speak directly to their pain."
-      recommendedApproach: "string — one sentence on how to open the first message. Concrete angle with a hook."
+      relevanceReason: "string — one sentence on why THIS PERSON in THIS ROLE matters for the seller's pain point"
+      recommendedApproach: "string — one sentence on how to open the first message. Concrete angle with a hook in the founder's voice"
+      dataConfidence: "string — 'high' (well-known firm) | 'medium' (plausible but speculative)"
       verificationNeeded: "true"
       scoreBreakdown:
         companyFit: "number (20-35)"
         engagement: "number (0-15)"
-        intent: "number (0-12)"
+        intent: "number (0-15) — bump higher for leads with explicit buying triggers"
         recency: "number (0-10)"

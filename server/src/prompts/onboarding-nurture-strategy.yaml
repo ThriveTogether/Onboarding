@@ -1,20 +1,32 @@
 name: "onboarding-nurture-strategy"
-version: "1.0"
-description: "Generates Doc 1 of 5: the Nurture Strategy ('How your AI sells'). Stage-by-stage communication plan for Cold → Warm → Hot."
+version: "2.0"
+description: "Generates the Nurture Strategy doc — the multi-channel outreach engine. v2 follows MerakiPeople's full structure: Channel Strategy, CRM Stage Definitions, Per-ICP Sequences (trigger/channel/timing/templates/escalation), Messaging Tracks, Engagement Benchmarks. Backwards-compatible with the old cold/warm/hot stage shape."
 model: "claude-sonnet-4-5-20250929"
-max_tokens: 2500
+max_tokens: 4500
 temperature: 0.5
 system_prompt: |
-  You are a senior sales strategist at MerakiPeople generating a Nurture Strategy doc for a customer's AI-driven outreach system. This doc tells the AI how to communicate with leads at every stage.
+  You are a senior sales strategist at MerakiPeople generating the Nurture Strategy doc. This doc tells the platform how to communicate with leads at every stage. Quality bar: 80%+ right on first generation. The founder should approve with minor tweaks, not rewrite.
 
-  Quality bar: 80%+ right on first generation. The founder should be able to approve with minor tweaks, not rewrite.
+  ## Required structure — 5 sections
 
-  Rules:
-  - Reference the founder's vertical, company name, and at least 2 specific details from the research. No generic "companies often face..." language.
-  - Stages are fixed: Cold Outreach, Warm/Engaged, Hot/Rep-Ready. Do not invent new stages.
-  - Per stage: channel (primary + secondary), tone, first-message approach, frequency (specific days), escalation behaviour.
-  - Handoff trigger must be concrete (e.g., "score > 76 AND 2 replies AND pricing mentioned").
-  - Read like a playbook a human sales head would approve — not like an AI-written doc.
+  Per the MerakiPeople onboarding playbook:
+
+  1. **Channel Strategy** — for each channel the founder selected (Email / LinkedIn / WhatsApp / Calling): when to use it, who handles it (AI vs rep), tone defaults
+  2. **CRM Stage Definitions** — explicit definitions of every stage in the funnel. Cold/Warming/Warm/Hot/Ready by default — but if the founder shared their own CRM stage names (Identified, Engaged, Sample Sent, Proposal, Order Placed, Repeat Customer, Dormant, Junk — like BKC's), use those
+  3. **Per-ICP Nurture Sequences** — for each stage, define: trigger (what entry condition), channel, timing (specific day numbers), message-template angle, escalation behaviour (when does AI hand off to a rep)
+  4. **Messaging Tracks** — distinct angles a lead can be on: e.g., "first-time prospect", "warm-handoff from a customer", "re-engagement after 30 days dormant", "competitor-switch trigger". Tracks are independent of stage; a Cold lead can be on the "competitor-switch" track if the trigger fires.
+  5. **Engagement Benchmarks** — what good looks like at each stage: open rate %, reply rate %, time-to-response, escalation %. Even rough benchmarks (vertical defaults) are better than silence.
+
+  ## Operating principles
+
+  - **Reference real signals.** Reference the founder's vertical, company name, and at least 2 specific details from the research. No generic "companies often face..." language.
+  - **Concrete > generic.** Handoff trigger = "score > 76 AND 2 replies AND pricing mentioned" — not "when the lead seems engaged".
+  - **Source attribution.** Tag whether each cadence/channel mix is grounded in founder feedback OR vertical-template default. Estimates need confirmation.
+  - **Lean.** No padding. If you only have one strong messaging track, list one — don't invent more.
+  - **Client's voice.** Use the company's terminology and tone, not generic SaaS-speak.
+  - **Demo-ready.** A human sales head should look at this and say "yes, I'd run this playbook" — not "this needs rewriting".
+
+  Stages are fixed at 5 unless the founder has supplied custom CRM stage names (then use those, mapped to score bands). Per stage, always include: channel(s), tone, first-message approach, frequency (specific days), escalation behaviour.
 
   {{PREVIOUS_FEEDBACK}}
 user_prompt: |
@@ -29,18 +41,31 @@ user_prompt: |
   Company research signals:
   {{RESEARCH_SUMMARY}}
 
-  Vertical nurture template (use as scaffolding, customize for this company):
+  Vertical nurture template (use as scaffolding, customize for this company — actively scrub prior-client terms):
   {{VERTICAL_NURTURE_JSON}}
 
-  Founder feedback on the leads we surfaced (VERY HIGH SIGNAL — weight this heavily):
+  Founder feedback on the leads we surfaced (VERY HIGH SIGNAL — weight heavily):
   {{FOUNDER_FEEDBACK}}
 
-  Produce a stage-by-stage communication plan. If the founder flagged some leads as "already a customer", factor in warm-handoff messaging for upsell. If they flagged some as "skip", exclude those profiles from the approach.
+  Produce the full 5-section Nurture Strategy. If the founder flagged some leads as "already a customer", factor in warm-handoff messaging tracks. If they flagged some as "skip", exclude those profiles from the approach.
 evidence_requirements:
-  - "Must reference the founder's specific vertical"
-  - "Each stage has channel, tone, approach, frequency, escalation"
-  - "Handoff trigger is concrete and measurable"
+  - "Channel Strategy section names every active channel + when to use it"
+  - "CRM Stage Definitions present for every stage"
+  - "Each stage has channel, tone, approach, frequency (specific day numbers), escalation"
+  - "Handoff trigger is concrete and measurable (specific score / count / keyword)"
+  - "Messaging Tracks are distinct angles, not just rephrased stages"
+  - "Engagement Benchmarks present (even if vertical defaults; flag as estimated)"
 output_schema:
+  channelStrategy:
+    - channel: "string — Email / LinkedIn / WhatsApp / Calling"
+      whenToUse: "string"
+      handledBy: "string — AI / Rep / Both"
+      toneDefault: "string"
+  crmStageDefinitions:
+    - stageName: "string"
+      definition: "string — when does a lead enter this stage?"
+      scoreRange: "string — e.g. '0-30'"
+      exitCondition: "string — what moves them to next stage"
   coldOutreach:
     channelPrimary: "string"
     channelSecondary: "string"
@@ -56,6 +81,18 @@ output_schema:
     escalation: "string"
   hotRepReady:
     channel: "string"
-    handoffTrigger: "string"
+    handoffTrigger: "string — concrete: score / reply count / keyword"
     repAction: "string"
+  messagingTracks:
+    - trackName: "string — e.g., 'first-time prospect', 'warm-handoff', 're-engagement', 'competitor-switch'"
+      trigger: "string — what puts a lead on this track"
+      angle: "string — how the messaging shifts on this track"
+  engagementBenchmarks:
+    coldOpenRatePct: "number — flag (estimated) if vertical default"
+    coldReplyRatePct: "number"
+    warmReplyRatePct: "number"
+    avgTimeToResponseHours: "number"
+    handoffRatePct: "number"
+    benchmarkSource: "string — 'founder-provided' / 'vertical-template' / 'estimated'"
+  flagsForFounder: ["string — every estimate/assumption that needs confirmation"]
   rationale: "string"
