@@ -170,7 +170,7 @@ For each issue:
 4. **Screenshot** (browser DevTools Network tab if it's an API error)
 5. **Email + company name** of the test founder you used (so dev can repro)
 
-File these in the team Slack channel `#meraki-onboarding-test` or as GitHub issues on `ThriveTogether/Onboarding`.
+File these in the **Teams channel "Meraki Onboarding — Testing"** or as GitHub issues on `ThriveTogether/Onboarding`.
 
 ---
 
@@ -194,4 +194,4 @@ These are known and being tracked separately:
 
 ---
 
-**Questions during testing → ping the dev team in `#meraki-onboarding-test`. Have fun breaking it.**
+**Questions during testing → ping the dev team in the Teams channel "Meraki Onboarding — Testing". Have fun breaking it.**
