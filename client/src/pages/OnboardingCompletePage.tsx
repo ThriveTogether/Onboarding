@@ -44,6 +44,12 @@ interface SessionSummary {
   }>;
 }
 
+// How long the celebratory Complete page sits before auto-redirecting into
+// MerakiPeople admin. Long enough to read the headline + counts, short enough
+// that it never feels like the page is stuck. The button is always available
+// for impatient founders to skip the wait.
+const AUTO_REDIRECT_DELAY_SECONDS = 5;
+
 export default function OnboardingCompletePage() {
   const { id } = useParams<{ id: string }>();
   const [summary, setSummary] = useState<SessionSummary | null>(null);
@@ -54,6 +60,7 @@ export default function OnboardingCompletePage() {
     | { kind: 'unavailable'; reason: string }
     | { kind: 'error'; message: string }
   >({ kind: 'idle' });
+  const [autoRedirectIn, setAutoRedirectIn] = useState<number | null>(null);
 
   // On mount, try to mint the handoff token in parallel with the summary
   // load. If the bridge isn't configured yet (HANDOFF_DISABLED), we silently
@@ -91,6 +98,30 @@ export default function OnboardingCompletePage() {
       cancelled = true;
     };
   }, [id]);
+
+  // Once the handoff token is ready, auto-redirect after a short delay so a
+  // returning founder (resume-from-anywhere → /onboarding/complete/<id>)
+  // doesn't sit on a celebration screen they've already seen. They can still
+  // click the button to skip the wait.
+  useEffect(() => {
+    if (handoffState.kind !== 'ready') {
+      setAutoRedirectIn(null);
+      return;
+    }
+    setAutoRedirectIn(AUTO_REDIRECT_DELAY_SECONDS);
+    const tick = setInterval(() => {
+      setAutoRedirectIn((current) => {
+        if (current === null) return null;
+        if (current <= 1) {
+          clearInterval(tick);
+          window.location.href = (handoffState as any).redirectUrl;
+          return 0;
+        }
+        return current - 1;
+      });
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [handoffState]);
 
   const openMerakiPeople = async () => {
     if (!id) return;
@@ -341,7 +372,10 @@ export default function OnboardingCompletePage() {
             </div>
             <h3 className="mp-h4" style={{ margin: '0 0 6px' }}>Your MerakiPeople workspace is ready</h3>
             <p className="mp-body-sm mp-muted" style={{ margin: '0 0 16px' }}>
-              Your company profile, target accounts, hunted leads, strategy docs and customised AI prompts are already loaded. Click below to log in — no password needed.
+              Your company profile, target accounts, hunted leads, strategy docs and customised AI prompts are already loaded.
+              {handoffState.kind === 'ready' && autoRedirectIn !== null && autoRedirectIn > 0 && (
+                <> Redirecting in <strong>{autoRedirectIn}s</strong> — or skip the wait below.</>
+              )}
             </p>
             <button
               type="button"
@@ -350,7 +384,11 @@ export default function OnboardingCompletePage() {
               disabled={handoffState.kind === 'minting'}
               style={{ minWidth: 220 }}
             >
-              {handoffState.kind === 'minting' ? 'Preparing your workspace…' : 'Open MerakiPeople →'}
+              {handoffState.kind === 'minting'
+                ? 'Preparing your workspace…'
+                : handoffState.kind === 'ready' && autoRedirectIn !== null && autoRedirectIn > 0
+                ? `Open MerakiPeople now →`
+                : 'Open MerakiPeople →'}
             </button>
             {handoffState.kind === 'error' && (
               <p className="mp-body-xs" style={{ marginTop: 10, color: 'var(--mp-coral)' }}>

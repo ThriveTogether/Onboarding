@@ -82,8 +82,13 @@ router.get('/state', async (req: Request, res: Response) => {
 function computeResumeUrl(company: any, docs: any[], leadCount: number): string {
   const id = company._id.toString();
 
-  // Already launched → land in the product app
-  if (company.phase === 'complete') return '/app/target-profile';
+  // Already launched → bounce back to the Complete page. From there the
+  // founder is redirected into MerakiPeople admin via the SSO handoff (or
+  // sees the "Team Meraki will reach out" fallback when the bridge isn't
+  // configured). Previously this returned /app/target-profile, which kept
+  // graduated founders trapped in the onboarding app's internal post-launch
+  // shell instead of forwarding them to the actual product.
+  if (company.phase === 'complete') return `/onboarding/complete/${id}`;
 
   // A1: company basics — companyName is required at signup, so this is implicit
   if (!company.companyName) return '/onboarding';
