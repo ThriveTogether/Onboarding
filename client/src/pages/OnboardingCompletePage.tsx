@@ -257,128 +257,141 @@ export default function OnboardingCompletePage() {
           </Card>
         )}
 
-        {/* Sign-in card — show the founder the admin URL + their email + a
-            password reminder. They click Open MerakiPeople, which takes them
-            to the admin sign-in page where they enter the same email/password
-            they used to sign up here. The bridge has already mirrored their
-            bcrypt hash into meraki_admin.users so the same password works. */}
+        {/* Sign-in card — header + email field + two CTAs (primary: open admin
+            sign-in, ghost: reset password). Uses Meraki design tokens (mp-btn--*,
+            mp-overline, brand colours) so it matches the rest of the wizard. */}
         <Card padding="lg" tone="tinted">
+          {/* Header: brand badge + title */}
           <div
             style={{
               display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              marginBottom: 12,
+              alignItems: 'flex-start',
+              gap: 14,
+              marginBottom: 20,
             }}
           >
             <div
               style={{
-                width: 40,
-                height: 40,
-                borderRadius: '50%',
-                background: 'var(--bg-brand-soft)',
-                color: 'var(--mp-indigo)',
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                background: 'var(--mp-indigo)',
+                color: '#fff',
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
+                boxShadow: 'var(--shadow-sm, 0 1px 2px rgba(21,43,104,0.08))',
               }}
             >
-              <KeyRound size={20} strokeWidth={2} />
+              <KeyRound size={20} strokeWidth={2.2} />
             </div>
-            <div>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <h3 className="mp-h4" style={{ margin: 0 }}>
                 Sign in to MerakiPeople
               </h3>
-              <p className="mp-body-sm mp-muted" style={{ margin: '2px 0 0' }}>
+              <p className="mp-body-sm mp-muted" style={{ margin: '4px 0 0' }}>
                 Your workspace is ready — company, leads, strategy docs and AI prompts already loaded.
               </p>
             </div>
           </div>
 
-          <div
-            className="mp-overline"
-            style={{ marginBottom: 6 }}
-          >
-            Sign-in URL
+          {/* Email "field" — looks like a real input row, with Copy button */}
+          <div className="mp-overline" style={{ marginBottom: 8 }}>
+            Your sign-in email
           </div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '10px 12px',
+              background: '#fff',
+              border: '1px solid var(--border-subtle, #E1E5EE)',
+              borderRadius: 10,
+              marginBottom: 16,
+            }}
+          >
+            <Mail size={16} strokeWidth={2} style={{ color: 'var(--mp-indigo)', flexShrink: 0 }} />
+            <span
+              style={{
+                flex: 1,
+                minWidth: 0,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                fontSize: 14,
+                fontWeight: 'var(--fw-medium, 500)',
+                color: 'var(--text-strong, #152B68)',
+              }}
+            >
+              {founderEmail || <span className="mp-muted">Loading your email…</span>}
+            </span>
+            {founderEmail && (
+              <button
+                type="button"
+                onClick={copyEmail}
+                className="mp-btn mp-btn--ghost mp-btn--sm"
+                style={{ flexShrink: 0 }}
+                aria-label="Copy email"
+              >
+                {emailCopied ? '✓ Copied' : 'Copy'}
+              </button>
+            )}
+          </div>
+
+          <p
+            className="mp-body-sm"
+            style={{
+              margin: '0 0 18px',
+              color: 'var(--text-strong, #152B68)',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 8,
+            }}
+          >
+            <KeyRound size={16} strokeWidth={2} style={{ color: 'var(--mp-indigo)', flexShrink: 0, marginTop: 2 }} />
+            <span>
+              Use the <strong>same password</strong> you created when signing up here.
+            </span>
+          </p>
+
+          {/* Primary action: open the admin sign-in page in a new tab */}
           <a
             href={MERAKI_ADMIN_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="mp-btn mp-btn-primary"
+            className="mp-btn mp-btn--primary mp-btn--block"
             style={{
-              width: '100%',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
               gap: 8,
-              marginBottom: 16,
+              marginBottom: 8,
               textDecoration: 'none',
             }}
           >
+            Open MerakiPeople sign-in
             <ExternalLink size={16} strokeWidth={2} />
-            Open MerakiPeople admin
           </a>
 
-          <div
-            className="mp-overline"
-            style={{ marginBottom: 6 }}
-          >
-            Your credentials
-          </div>
-          <div
+          {/* Secondary action: direct link to forgot-password — saves the founder
+              from hunting for the link on the sign-in page itself. */}
+          <a
+            href={`${MERAKI_ADMIN_URL.replace(/\/+$/, '')}/forgot-password`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mp-btn mp-btn--ghost mp-btn--sm mp-btn--block"
             style={{
-              background: 'var(--bg-app)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 8,
-              padding: 12,
-              fontFamily: 'monospace',
-              fontSize: 14,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              textDecoration: 'none',
             }}
           >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                marginBottom: 8,
-              }}
-            >
-              <Mail size={14} strokeWidth={2} className="mp-muted" />
-              <span style={{ flex: 1 }}>
-                {founderEmail || <span className="mp-muted">(loading…)</span>}
-              </span>
-              {founderEmail && (
-                <button
-                  type="button"
-                  onClick={copyEmail}
-                  className="mp-btn mp-btn-ghost mp-btn-sm"
-                  style={{ minWidth: 70 }}
-                >
-                  {emailCopied ? '✓ Copied' : 'Copy'}
-                </button>
-              )}
-            </div>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                color: 'var(--text-muted)',
-              }}
-            >
-              <KeyRound size={14} strokeWidth={2} />
-              <span>The password you set when signing up here.</span>
-            </div>
-          </div>
-
-          <p
-            className="mp-body-xs mp-muted"
-            style={{ marginTop: 12, marginBottom: 0 }}
-          >
-            Forgot it? Use the <strong>Forgot password</strong> link on the sign-in page to reset.
-          </p>
+            Forgot your password? Reset it →
+          </a>
         </Card>
       </div>
     </div>
