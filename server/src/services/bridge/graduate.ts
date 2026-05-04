@@ -289,7 +289,12 @@ export async function graduateToMerakiAdmin(
         graduated_at: new Date(),
       },
       $set: {
-        name: (founder.name || '') + ' (Rep)',
+        // Bare name (no "(Rep)" suffix) — the +rep@ user is hidden from the
+        // admin Employee Management UI by a server-side filter, so the only
+        // surfaces that ever show this name are internal (e.g., audit
+        // queries). Founder feedback: "(Rep)" was confusing in the few
+        // places it leaked to the UI before the filter landed.
+        name: founder.name || '',
         role: 'user', // <-- the key bit; counts as an employee on dashboard
         company_id: merakiCompanyId,
         company_name: company.companyName,
