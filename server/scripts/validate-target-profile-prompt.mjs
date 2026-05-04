@@ -66,7 +66,22 @@ const aycResearch = {
     ],
     toneSignals: ['business intelligence', 'data analytics', 'enterprise', 'AI', 'data science'],
   },
-  publicSources: { status: 'not_found', newsMentions: [], fundingSignals: [] },
+  // Public sources: copied from a real Serper trace against this company.
+  // Includes startup-fest + prototype mentions which appear to be biasing
+  // the LLM toward "deep-tech startup builder" framing in production.
+  publicSources: {
+    status: 'success',
+    newsMentions: [
+      'Share Market Analysis — BUSINESS INTELLIGENCE & MACHINE LEARNING — Equity, KSCL Kaveri Seed Company Limited',
+      'Boost Productivity with AI-Powered Reporting — LinkedIn — aYc analytics #Business Intelligence',
+    ],
+    fundingSignals: [
+      'aYc Analytics — Company Profile | The Company Check — Funding Insights: Jul 2021, Post-IPO Grab',
+      'aYc Analytics at COEP Startup Fest 2026 | Showcasing BINDAS — Seed funding up to ₹50 Lakh & prototype support up to ₹20 Lakh',
+      'Ayc Analytics - Instagram — raised $2 million',
+    ],
+    directoryListings: [],
+  },
 };
 
 const b2bSaasDefaults = {
@@ -88,17 +103,49 @@ const researchSummary =
   'Website — aYc Analytics offers business intelligence solutions, data science, and AI-powered analytics to transform raw data into actionable insights for enterprises.\n' +
   'Public — no news or funding signals found.';
 
+const VERTICAL_PRESETS = {
+  b2b_saas: {
+    displayName: 'B2B SaaS',
+    defaults: b2bSaasDefaults,
+  },
+  b2b_services: {
+    displayName: 'B2B Services',
+    defaults: {
+      geography: 'India — Tier 1 & 2 cities',
+      companySize: '50-1000 employees',
+      salesTeamSize: '5-12 reps',
+      industryFocus: 'B2B Services — Consulting, Marketing Agencies, IT Services, Professional Services',
+      decisionMakers: ['Founder', 'Partner', 'VP Sales', 'Business Development Head'],
+      painSignals: ['Long proposal cycles', 'Pipeline reliant on founder relationships', 'Inconsistent outbound across account execs', 'Lead leakage between stages'],
+    },
+  },
+  other: {
+    displayName: 'Other',
+    defaults: {
+      geography: 'India — Tier 1 cities',
+      companySize: '20-500 employees',
+      salesTeamSize: '3-8 reps',
+      industryFocus: 'Other',
+      decisionMakers: ['Founder', 'Head of Sales', 'VP'],
+      painSignals: ['Pipeline visibility gap', 'No CRM in place', 'Manual lead tracking'],
+    },
+  },
+};
+
+const verticalKey = process.argv[3] || 'b2b_saas';
+const preset = VERTICAL_PRESETS[verticalKey] || VERTICAL_PRESETS.b2b_saas;
+
 const ctx = {
   COMPANY_NAME: 'aYc Analytics',
   WEBSITE_URL: 'https://aycanalytics.com',
   LINKEDIN_URL: 'https://www.linkedin.com/company/aycanalytics',
-  VERTICAL_DISPLAY_NAME: 'B2B SaaS',
+  VERTICAL_DISPLAY_NAME: preset.displayName,
   SALES_TEAM_SIZE: '1-3 reps',
   LINKEDIN_RESEARCH: JSON.stringify(aycResearch.linkedin),
   WEBSITE_RESEARCH: JSON.stringify(aycResearch.website),
   PUBLIC_RESEARCH: JSON.stringify(aycResearch.publicSources),
   RESEARCH_SUMMARY: researchSummary,
-  VERTICAL_DEFAULTS_JSON: JSON.stringify(b2bSaasDefaults, null, 2),
+  VERTICAL_DEFAULTS_JSON: JSON.stringify(preset.defaults, null, 2),
   DOC_KIND: 'target_profile',
   PREVIOUS_FEEDBACK: '',
 };

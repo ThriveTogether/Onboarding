@@ -145,6 +145,23 @@ async function fetchDirectScrape(websiteUrl) {
   };
 }
 
+async function fetchPublicSources(companyName) {
+  const newsQuery = `"${companyName}" funding OR raised OR series OR seed`;
+  try {
+    const r = await serper(newsQuery, 6);
+    return {
+      hits: (r.organic || []).length,
+      mentions: (r.organic || []).slice(0, 5).map((o) => ({
+        title: o.title,
+        link: o.link,
+        snippet: o.snippet,
+      })),
+    };
+  } catch (e) {
+    return { error: String(e) };
+  }
+}
+
 (async () => {
   console.log('=== Research pipeline trace for', COMPANY_NAME, '===\n');
 
@@ -159,6 +176,10 @@ async function fetchDirectScrape(websiteUrl) {
   console.log('\n--- Website direct scrape ---');
   const ds = await fetchDirectScrape(WEBSITE_URL);
   console.log(JSON.stringify(ds, null, 2));
+
+  console.log('\n--- Public sources (news/funding) ---');
+  const ps = await fetchPublicSources(COMPANY_NAME);
+  console.log(JSON.stringify(ps, null, 2));
 
   // Apply the merge logic from companyResearch.ts
   console.log('\n--- Merged positioning (production logic) ---');
