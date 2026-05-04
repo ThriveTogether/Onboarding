@@ -173,6 +173,13 @@ export async function graduateToMerakiAdmin(
     };
   }
 
+  // Load all generated docs up-front. Both companyDescription and
+  // buildIntelligenceData need the rich Knowledge Base + Brand content —
+  // without this, the admin Company Overview page renders the thin website
+  // signals (3 page titles + 1-line meta description) instead of the
+  // AI-written descriptions the founder approved during onboarding.
+  const docs = await OnboardingDoc.find({ companyId: company._id });
+
   // 1. Company — find-or-create on onboarding_company_id
   const Company = MerakiCompany();
   const companyDoc = await Company.findOneAndUpdate(
@@ -188,8 +195,8 @@ export async function graduateToMerakiAdmin(
         name: company.companyName,
         industry: VERTICAL_TO_INDUSTRY[company.vertical] || 'Other',
         website: company.websiteUrl || '',
-        description: companyDescription(company),
-        intelligence_data: buildIntelligenceData(company),
+        description: companyDescription(company, docs),
+        intelligence_data: buildIntelligenceData(company, docs),
         // Both signals tell the admin app's RootRedirect + SignIn redirect
         // logic that this company is fully set up and should land on the
         // main dashboard, NOT the in-admin /company-setup wizard. Without
@@ -298,7 +305,8 @@ export async function graduateToMerakiAdmin(
   const merakiUserId = (repDoc as any)._id.toString();
 
   // 3. Build prompt context — used to interpolate every per-company prompt.
-  const docs = await OnboardingDoc.find({ companyId: company._id });
+  // (`docs` was loaded above so the Company doc could pick up rich KB
+  // content for description + intelligence_data.)
   const context = await buildPromptContext(company, docs);
 
   // 4. Seed system_prompts. For each of the 16 prompt types we either:
@@ -1128,7 +1136,22 @@ async function seedGeneralSettings(
 
 // ----------------- helpers -----------------
 
-function companyDescription(company: any): string {
+function kbContent(docs: any[]): any {
+  return docs?.find((d) => d.kind === 'knowledge_base')?.content || {};
+}
+function brandContent(docs: any[]): any {
+  return docs?.find((d) => d.kind === 'brand_guidelines')?.content || {};
+}
+
+function companyDescription(company: any, docs: any[]): string {
+  // Prefer the AI-written companyDescription from the Knowledge Base doc —
+  // that's a multi-sentence summary the founder approved. Fall back to the
+  // website positioning + target-profile industry only when KB is missing
+  // (early-stage companies who skipped Phase B docs).
+  const kb = kbContent(docs);
+  if (typeof kb.companyDescription === 'string' && kb.companyDescription.trim().length > 50) {
+    return kb.companyDescription.slice(0, 1500);
+  }
   const parts: string[] = [];
   if (company.research?.website?.positioning) parts.push(company.research.website.positioning);
   if (company.targetProfile?.industryFocus) {
@@ -1137,36 +1160,94 @@ function companyDescription(company: any): string {
   return parts.join(' ').slice(0, 1000);
 }
 
-function buildIntelligenceData(company: any): Record<string, any> {
-  // Map onboarding research signals into the shape MerakiBackend expects.
-  // Only the fields we have evidence for go in — gaps stay empty so the
-  // SuperAdmin UI shows "needs review" rather than fake data.
+function buildIntelligenceData(company: any, docs: any[]): Record<string, any> {
+  // Map onboarding research + AI-written docs into the shape MerakiBackend
+  // expects. Knowledge Base is the SOURCE OF TRUTH for products / value
+  // proposition / differentiators — the website signals are noisy fallbacks
+  // (page titles vs. structured product names). Only fields we have evidence
+  // for go in; gaps stay empty so SuperAdmin shows "needs review" rather
+  // than fake data.
   const linkedin = company.research?.linkedin || {};
   const website = company.research?.website || {};
   const tp = company.targetProfile || {};
+  const kb = kbContent(docs);
+  const brand = brandContent(docs);
+  const publicSources = company.research?.publicSources || {};
+
   const meta = {
     category: 'auto',
     extracted_at: new Date(),
     source: 'meraki_onboarding_graduation',
   };
+
+  // Products: prefer KB's structured 7-9 item list. Website-products is page
+  // titles like "Careers at X", "Leadership Team" — useless for sales context.
+  const productsServices =
+    Array.isArray(kb.productsServices) && kb.productsServices.length > 0
+      ? kb.productsServices.filter((s: any) => typeof s === 'string')
+      : Array.isArray(website.products)
+        ? website.products
+        : [];
+
+  // Value proposition: KB's companyDescription is a multi-sentence pitch.
+  // Website positioning is a one-line meta description. KB wins.
+  const valueProposition =
+    typeof kb.companyDescription === 'string' && kb.companyDescription.trim().length > 50
+      ? kb.companyDescription
+      : website.positioning || '';
+
+  const positioningAngles = Array.isArray(kb.positioningAngles)
+    ? kb.positioningAngles.filter((s: any) => typeof s === 'string')
+    : [];
+  const keyDifferentiators = Array.isArray(kb.keyDifferentiators)
+    ? kb.keyDifferentiators.filter((s: any) => typeof s === 'string')
+    : [];
+  const competitors = Array.isArray(kb.competitors)
+    ? kb.competitors.filter((s: any) => typeof s === 'string')
+    : [];
+  const targetMarket = typeof kb.targetMarket === 'string' ? kb.targetMarket : '';
+
+  // Common objections come back as { objection, response } pairs in our schema.
+  // Normalise to that shape even if a hand-edited doc returns plain strings.
+  const commonObjections = Array.isArray(kb.commonObjections)
+    ? kb.commonObjections.map((o: any) =>
+        typeof o === 'string'
+          ? { objection: o, response: '' }
+          : { objection: String(o?.objection || ''), response: String(o?.response || '') },
+      )
+    : [];
+
   return {
     company_intelligence: {
       company_name: company.companyName,
       industry_sector: VERTICAL_TO_INDUSTRY[company.vertical] || 'Other',
       target_customer_segments: tp.industryFocus ? [tp.industryFocus] : [],
-      primary_products_and_services: Array.isArray(website.products) ? website.products : [],
-      value_proposition: website.positioning || '',
+      primary_products_and_services: productsServices,
+      value_proposition: valueProposition,
+      // KB-derived fields — surface for SuperAdmin Company Overview.
+      positioning_angles: positioningAngles,
+      key_differentiators: keyDifferentiators,
+      competitors,
+      common_objections: commonObjections,
+      target_market_description: targetMarket,
       key_decision_maker_roles: Array.isArray(tp.decisionMakers)
         ? tp.decisionMakers.map((role: string) => ({ role }))
         : [],
       pain_points_and_challenges: Array.isArray(tp.painSignals) ? tp.painSignals : [],
       primary_website_url: company.websiteUrl || '',
       employee_count: linkedin.employeeCount || '',
+      // Brand voice — useful for SuperAdmin "how AI sounds" panels.
+      brand_tone: brand?.voice?.tone || '',
+      brand_voice_dos: Array.isArray(brand?.dos) ? brand.dos : [],
+      brand_voice_donts: Array.isArray(brand?.donts) ? brand.donts : [],
       extraction_metadata: meta,
     },
     business_intelligence: {
-      recent_news_and_developments: Array.isArray(company.research?.publicSources?.newsMentions)
-        ? company.research.publicSources.newsMentions.join(' · ')
+      recent_news_and_developments: Array.isArray(publicSources.newsMentions)
+        ? publicSources.newsMentions.join(' · ')
+        : '',
+      funding_signals: Array.isArray(publicSources.fundingSignals)
+        ? publicSources.fundingSignals.join(' · ')
         : '',
       extraction_metadata: meta,
     },
@@ -1174,11 +1255,16 @@ function buildIntelligenceData(company: any): Record<string, any> {
       ? {
           Headquarters: { city: '', state: '', country: linkedin.headquarters },
           ServiceAreas: { details: tp.geography || '' },
+          target_market: targetMarket,
         }
-      : {},
+      : targetMarket
+        ? { ServiceAreas: { details: tp.geography || '' }, target_market: targetMarket }
+        : {},
     decision_maker_intelligence: Array.isArray(tp.decisionMakers)
       ? {
           keyDecisionMakerRolesAndTitles: tp.decisionMakers.map((role: string) => ({ role })),
+          pain_signals: Array.isArray(tp.painSignals) ? tp.painSignals : [],
+          decision_maker_pain_points: Array.isArray(tp.painSignals) ? tp.painSignals : [],
         }
       : {},
   };
