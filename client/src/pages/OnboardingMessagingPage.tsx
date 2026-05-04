@@ -112,6 +112,22 @@ export default function OnboardingMessagingPage() {
     }
   };
 
+  // After a successful save, advance to the next stage:channel cell so the
+  // founder doesn't have to manually click the next tab. Walk channels first
+  // within the current stage, then roll over to the first channel of the next
+  // stage. On the very last cell (hot:whatsapp) we stay put — there's nowhere
+  // to go.
+  const advanceToNextCell = () => {
+    const stageIdx = STAGES.findIndex((s) => s.key === stage);
+    const channelIdx = CHANNELS.findIndex((c) => c.key === channel);
+    if (channelIdx < CHANNELS.length - 1) {
+      setChannel(CHANNELS[channelIdx + 1].key);
+    } else if (stageIdx < STAGES.length - 1) {
+      setStage(STAGES[stageIdx + 1].key);
+      setChannel(CHANNELS[0].key);
+    }
+  };
+
   const handleSave = async () => {
     if (!id) return;
     setSavingKey(key);
@@ -128,6 +144,7 @@ export default function OnboardingMessagingPage() {
         edited: current.edited,
       });
       updateCurrent({ saved: true });
+      advanceToNextCell();
     } catch (e: any) {
       setError(e.response?.data?.error || 'Could not save. Retry.');
     } finally {
