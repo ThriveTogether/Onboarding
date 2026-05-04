@@ -147,22 +147,77 @@ async function fetchWebsiteResearch(
   if (!websiteUrl || !websiteUrl.trim()) {
     return emptyWebsite('skipped');
   }
-  if (!isSerperAvailable()) {
-    return emptyWebsite('not_found');
-  }
 
   const domain = extractDomain(websiteUrl);
   if (!domain) return emptyWebsite('failed');
+
+  // Two parallel research paths — Serper (Google snippets) AND direct page
+  // scrape (meta tags + body text). We merge whichever returns content. This
+  // protects against:
+  //   (a) Serper rate-limiting or returning empty for known-thin URLs
+  //   (b) JS-rendered SPAs where Google's cache lags but the meta description
+  //       is still server-rendered (the aYc Analytics case — homepage HTML is
+  //       under 3KB, but <meta name="description"> has the full positioning).
+  // Both helpers are best-effort with timeouts; failure of one doesn't abort
+  // the other.
+  const [serperRes, pageRes] = await Promise.allSettled([
+    fetchWebsiteViaSerper(websiteUrl, companyName, domain),
+    fetchWebsiteViaDirectScrape(websiteUrl),
+  ]);
+
+  const serper = serperRes.status === 'fulfilled' ? serperRes.value : null;
+  const page = pageRes.status === 'fulfilled' ? pageRes.value : null;
+
+  // Merge: prefer serper's positioning if it's substantively longer than the
+  // page meta description (often Google's snippet is more verbose). Otherwise
+  // use the page's meta description. Products list comes from whichever has
+  // more entries (typically Serper's adjacent-page hits).
+  const positioning =
+    (serper?.positioning && serper.positioning.length > 40 ? serper.positioning : '') ||
+    page?.positioning ||
+    serper?.positioning ||
+    '';
+
+  const products = ((serper?.products?.length ?? 0) >= (page?.products?.length ?? 0)
+    ? serper?.products
+    : page?.products) || [];
+
+  // If neither path produced anything, mark not_found so downstream knows
+  // there are no signals to ground in.
+  if (!positioning && products.length === 0) {
+    return emptyWebsite('not_found');
+  }
+
+  return {
+    status: 'success',
+    positioning,
+    products,
+    toneSignals: page?.toneSignals || [],
+    competitorSignals: [],
+    fetchedAt: new Date(),
+    freshness: 'unknown',
+    lastModified: null,
+    copyrightYear: null,
+    freshnessSignals: [],
+  };
+}
+
+/** Serper-only path — extracted from the original implementation. Returns
+ *  null on any failure or empty result. */
+async function fetchWebsiteViaSerper(
+  websiteUrl: string,
+  companyName: string,
+  domain: string,
+): Promise<{ positioning: string; products: string[] } | null> {
+  if (!isSerperAvailable()) return null;
 
   const query = `site:${domain} "${companyName.trim()}"`;
   let result;
   try {
     result = await serperSearch(query, { num: 5 });
   } catch {
-    return emptyWebsite('failed');
+    return null;
   }
-
-  // Fall back to a broader query if site-restricted search returned nothing.
   let hits = result.organic;
   if (hits.length === 0) {
     try {
@@ -172,27 +227,118 @@ async function fetchWebsiteResearch(
       hits = [];
     }
   }
+  if (hits.length === 0) return null;
 
-  if (hits.length === 0) {
-    return emptyWebsite('not_found');
-  }
-
-  // Use the homepage hit's snippet as positioning. Pick the shortest URL (likely root).
   const home = [...hits].sort((a, b) => a.link.length - b.link.length)[0];
   return {
-    status: 'success',
     positioning: home.snippet || home.title || '',
-    products: hits
-      .slice(1, 4)
-      .map((h) => h.title)
-      .filter(Boolean),
-    toneSignals: [],
-    competitorSignals: [],
-    fetchedAt: new Date(),
-    freshness: 'unknown',
-    lastModified: null,
-    copyrightYear: null,
-    freshnessSignals: [],
+    products: hits.slice(1, 4).map((h) => h.title).filter(Boolean),
+  };
+}
+
+/** Direct-scrape path — fetches the homepage HTML, extracts meta tags + body
+ *  text, returns whatever signals it can. Resilient to JS-rendered SPAs
+ *  because meta description / og:* tags are server-rendered even on SPAs.
+ *  Returns null on any failure. */
+async function fetchWebsiteViaDirectScrape(
+  websiteUrl: string,
+): Promise<{ positioning: string; products: string[]; toneSignals: string[] } | null> {
+  const url = /^https?:\/\//i.test(websiteUrl) ? websiteUrl : `https://${websiteUrl}`;
+  let html: string;
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: AbortSignal.timeout(8_000),
+      headers: {
+        // Some sites refuse default Node UA; pretend to be a real browser.
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
+    });
+    if (!res.ok) return null;
+    // Cap to first 200 KB to avoid pulling huge pages.
+    const reader = res.body?.getReader();
+    if (!reader) return null;
+    const decoder = new TextDecoder();
+    let acc = '';
+    while (acc.length < 200_000) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      acc += decoder.decode(value, { stream: true });
+    }
+    try {
+      reader.cancel();
+    } catch {
+      /* ignore */
+    }
+    html = acc;
+  } catch {
+    return null;
+  }
+  if (!html) return null;
+
+  // Pull standard meta tags. We look at: <title>, <meta name="description">,
+  // og:title, og:description, og:site_name, twitter:description. These are
+  // server-rendered even on SPAs.
+  const meta = (name: string) => {
+    const re = new RegExp(
+      `<meta[^>]+(?:name|property)=["']${name}["'][^>]*content=["']([^"']+)["']`,
+      'i',
+    );
+    const m = html.match(re);
+    return m ? m[1].trim() : '';
+  };
+  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+  const title = titleMatch ? titleMatch[1].trim() : '';
+  const description = meta('description');
+  const ogTitle = meta('og:title');
+  const ogDescription = meta('og:description');
+  const twDescription = meta('twitter:description');
+  const keywords = meta('keywords');
+
+  // Strip body text (rough). For SPAs the stripped body will be near-empty;
+  // for normal sites this captures the main copy.
+  const bodyText = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Pick the longest meta description as positioning — they tend to be
+  // marketing-grade copy crafted for SEO/social previews.
+  const positioning =
+    [ogDescription, description, twDescription]
+      .filter(Boolean)
+      .sort((a, b) => b.length - a.length)[0] || '';
+
+  // If the body text has substantively more than just the SPA shell (>500
+  // chars), include the first chunk as additional positioning context.
+  const products: string[] = [];
+  if (bodyText.length > 500) {
+    // Include the first ~600-char window of body text as a "products /
+    // copy" signal — most marketing sites surface their key value props
+    // above the fold.
+    products.push(bodyText.slice(0, 600));
+  }
+
+  // Tone signals: keywords if present (low effort but sometimes useful).
+  const toneSignals = keywords
+    ? keywords.split(',').map((k) => k.trim()).filter(Boolean).slice(0, 8)
+    : [];
+
+  if (!positioning && bodyText.length < 100) {
+    // SPA with no meta description and no real body — nothing useful here.
+    return null;
+  }
+
+  return {
+    positioning: positioning || `${title}${title && bodyText ? ' — ' : ''}${bodyText.slice(0, 200)}`,
+    products,
+    toneSignals,
   };
 }
 
