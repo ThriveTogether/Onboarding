@@ -232,6 +232,15 @@ export async function graduateToMerakiAdmin(
       $set: {
         name: founder.name || '',
         role: 'admin',
+        // MerakiPeople's per-employee dashboard endpoint
+        // (/api/dashboard/employee/:id) only fans out to all company
+        // employees when the requesting user has position='Marketing Manager';
+        // any other position scopes the query to that user's own
+        // employee_id. The founder is the only admin AND we want them to
+        // see every employee's data, so flag them as Marketing Manager.
+        // Department='Marketing' keeps it consistent.
+        position: 'Marketing Manager',
+        department: 'Marketing',
         company_id: merakiCompanyId,
         company_name: company.companyName,
         is_active: true,
