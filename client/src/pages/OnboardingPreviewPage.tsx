@@ -84,6 +84,21 @@ export default function OnboardingPreviewPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [pickedLeadId, setPickedLeadId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [launching, setLaunching] = useState(false);
+  const [launchError, setLaunchError] = useState('');
+
+  const handleLaunch = async () => {
+    if (!id) return;
+    setLaunchError('');
+    setLaunching(true);
+    try {
+      await onboardingAPI.launch(id);
+      navigate(`/onboarding/complete/${id}`);
+    } catch (e: any) {
+      setLaunchError(e.response?.data?.error || 'Launch failed. Try again.');
+      setLaunching(false);
+    }
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -315,12 +330,17 @@ export default function OnboardingPreviewPage() {
           )}
         </Card>
 
-        <div className="mp-row" style={{ justifyContent: 'flex-end', marginTop: 24, gap: 12 }}>
+        <div className="mp-row" style={{ justifyContent: 'flex-end', marginTop: 24, gap: 12, alignItems: 'center' }}>
+          {launchError && (
+            <p className="mp-help mp-help--error" style={{ marginRight: 'auto' }}>
+              {launchError}
+            </p>
+          )}
           <Button variant="ghost" onClick={() => navigate(`/onboarding/docs/${id}`)}>
             ← Back to docs
           </Button>
-          <Button size="lg" onClick={() => navigate(`/onboarding/launch/${id}`)}>
-            Looks good — let's launch →
+          <Button size="lg" onClick={handleLaunch} disabled={launching}>
+            {launching ? 'Launching…' : "Looks good — let's launch →"}
           </Button>
         </div>
       </div>

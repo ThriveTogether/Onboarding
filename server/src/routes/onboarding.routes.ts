@@ -132,10 +132,11 @@ function computeResumeUrl(company: any, docs: any[], leadCount: number): string 
   });
   if (!allDocsResolved) return `/onboarding/docs/${id}`;
 
-  // B6: preview — show before launch (skip if previously seen)
-  if (!company.previewSeenAt) return `/onboarding/preview/${id}`;
-
-  return `/onboarding/launch/${id}`;
+  // B6: preview — last step before launch. The launch happens inline on
+  // this page (no separate "Almost there" screen), so once the founder
+  // clicks "Looks good — let's launch" we set phase=complete and bounce
+  // them to /complete via the early-return at the top of this fn.
+  return `/onboarding/preview/${id}`;
 }
 
 router.get('/verticals', (_req, res) => {
@@ -1162,9 +1163,6 @@ router.post('/company/:id/launch', async (req: Request, res: Response) => {
   const { id } = req.params;
   const company = await OnboardingCompany.findById(id);
   if (!company) return res.status(404).json({ error: 'Company not found' });
-  if (!company.successMetric) {
-    return res.status(400).json({ error: 'Success metric required before launch' });
-  }
 
   company.phase = 'complete';
   company.phaseBCompletedAt = new Date();

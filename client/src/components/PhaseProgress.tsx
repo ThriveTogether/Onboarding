@@ -14,7 +14,6 @@ const STEPS = [
   { key: 'b1', label: 'Nurture' },
   { key: 'b2', label: 'Scoring' },
   { key: 'b3', label: 'Brand voice' },
-  { key: 'b4', label: 'Launch' },
 ];
 
 export default function PhaseProgress({ phase, step }: PhaseProgressProps) {

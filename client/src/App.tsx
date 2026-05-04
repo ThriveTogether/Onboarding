@@ -15,7 +15,6 @@ import OnboardingMessagingPage from './pages/OnboardingMessagingPage';
 import OnboardingChannelStagePage from './pages/OnboardingChannelStagePage';
 import OnboardingDocsPage from './pages/OnboardingDocsPage';
 import OnboardingPreviewPage from './pages/OnboardingPreviewPage';
-import OnboardingLaunchPage from './pages/OnboardingLaunchPage';
 import OnboardingCompletePage from './pages/OnboardingCompletePage';
 import AppIndexPage from './pages/app/AppIndexPage';
 import TargetProfilePage from './pages/app/TargetProfilePage';
@@ -86,7 +85,6 @@ export default function App() {
           <Route path="/onboarding/docs" element={<DocsRouter />} />
           <Route path="/onboarding/docs/:id" element={<OnboardingDocsPage />} />
           <Route path="/onboarding/preview/:id" element={<OnboardingPreviewPage />} />
-          <Route path="/onboarding/launch/:id" element={<OnboardingLaunchPage />} />
           <Route path="/onboarding/complete/:id" element={<OnboardingCompletePage />} />
 
           {/* Post-launch product app — inside sidebar shell */}
