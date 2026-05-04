@@ -241,8 +241,52 @@ export async function graduateToMerakiAdmin(
     },
     { upsert: true, new: true, setDefaultsOnInsert: true },
   );
-  const merakiUserId = (userDoc as any)._id.toString();
+  const merakiAdminUserId = (userDoc as any)._id.toString();
   const createdUser = (userDoc as any).graduated_at?.getTime?.() === (userDoc as any).updated_at?.getTime?.();
+
+  // 2b. Companion "rep" user with role=user — required by MerakiPeople's
+  //     dashboard, which builds employee_ids from
+  //       users.find({company_id, role: 'user'})
+  //     then filters every artifact / b2b_account / target_profile by
+  //       employee_id $in employee_ids
+  //
+  //     The admin user (role=admin) created in step 2 powers login + admin UI,
+  //     but is invisible to dashboard counts. Without a paired role=user
+  //     record, the founder sees 0 leads / 0 employees on /dashboard even
+  //     though the data is present.
+  //
+  //     Email convention: founder@example.com → founder+rep@example.com.
+  //     RFC 5233 sub-addressing: most email providers route the +rep variant
+  //     to the same inbox, so password reset still reaches the founder.
+  //     The rep shares the founder's password hash so a single login works.
+  const repEmail = founder.email.toLowerCase().trim().replace('@', '+rep@');
+  const repDoc = await User.findOneAndUpdate(
+    { email: repEmail },
+    {
+      $setOnInsert: {
+        email: repEmail,
+        onboarding_user_id: founder._id,
+        onboarding_source: 'meraki_onboarding',
+        password: founder.passwordHash,
+        is_authenticated_via_sso: true,
+        created_at: new Date(),
+        graduated_at: new Date(),
+      },
+      $set: {
+        name: (founder.name || '') + ' (Rep)',
+        role: 'user', // <-- the key bit; counts as an employee on dashboard
+        company_id: merakiCompanyId,
+        company_name: company.companyName,
+        is_active: true,
+        is_verified: true,
+        updated_at: new Date(),
+      },
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true },
+  );
+  // Downstream steps (b2b_accounts, leads, target_profiles, artifacts) all
+  // use this id as employee_id so every record passes the dashboard filter.
+  const merakiUserId = (repDoc as any)._id.toString();
 
   // 3. Build prompt context — used to interpolate every per-company prompt.
   const docs = await OnboardingDoc.find({ companyId: company._id });
@@ -469,7 +513,10 @@ export async function graduateToMerakiAdmin(
   return {
     status: bridgeFailures.length === 0 ? 'success' : 'partial',
     meraki_company_id: merakiCompanyId,
-    meraki_user_id: merakiUserId,
+    // Return the admin id (login identity), not the companion rep id —
+    // callers like /handoff-token treat meraki_user_id as the founder's
+    // primary user record.
+    meraki_user_id: merakiAdminUserId,
     prompts_seeded: promptsSeeded,
     prompts_skipped: promptsSkipped,
     prompts_failed: promptsFailed,
