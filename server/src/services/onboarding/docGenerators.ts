@@ -128,6 +128,13 @@ export async function generateDoc(
       2
     ),
     RESEARCH_SUMMARY: researchSummary,
+    // Structured research blobs — passed to the critic so its
+    // vertical-mismatch + grounding checks have ground truth to compare
+    // the generated doc against. (The generator prompts use the summary;
+    // the critic prompt reads these raw blobs.)
+    LINKEDIN_RESEARCH: JSON.stringify(company.research?.linkedin || {}),
+    WEBSITE_RESEARCH: JSON.stringify(company.research?.website || {}),
+    PUBLIC_RESEARCH: JSON.stringify(company.research?.publicSources || {}),
     FOUNDER_FEEDBACK: founderFeedback,
     VERTICAL_NURTURE_JSON: JSON.stringify(template.nurture, null, 2),
     VERTICAL_SCORING_JSON: JSON.stringify(template.scoring, null, 2),

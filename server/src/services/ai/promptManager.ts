@@ -37,6 +37,9 @@ export function interpolate(template: string, context: Record<string, string>): 
   for (const [key, value] of Object.entries(context)) {
     result = result.split(`{{${key}}}`).join(value ?? '');
   }
+  // Strip any unmatched {{TOKEN}} literals — leaving them in the prompt looks
+  // like a templating bug to the LLM and pollutes critic comparisons.
+  result = result.replace(/\{\{[A-Z0-9_]+\}\}/g, '');
   return result;
 }
 

@@ -1,6 +1,6 @@
 name: "onboarding-doc-critique"
-version: "1.1"
-description: "Critique agent shared across all 5 onboarding docs. v1.1 tightens grounding + vertical-fit checks to force regeneration when the generator drifts into generic SaaS-canonical answers. Generator prompts unchanged."
+version: "1.2"
+description: "Critique agent shared across all 5 onboarding docs. v1.2 wires the actual research signals (website / LinkedIn / public) into the critic's user_prompt so the vertical-mismatch + grounding checks have ground truth to compare against — they were running blind in v1.1."
 model: "claude-haiku-4-5-20251001"
 max_tokens: 1500
 temperature: 0.3
@@ -51,12 +51,27 @@ system_prompt: |
 user_prompt: |
   Doc kind: {{DOC_KIND}}
   Company: {{COMPANY_NAME}}
-  Vertical: {{VERTICAL_DISPLAY_NAME}}
+  Vertical (founder-selected at signup — may NOT match actual positioning, the website is the source of truth): {{VERTICAL_DISPLAY_NAME}}
 
-  Generated content:
+  ## Research signals — this is the ground truth. The mandatory checks REQUIRE you to read these and compare.
+
+  Website research (positioning, products, tone):
+  {{WEBSITE_RESEARCH}}
+
+  LinkedIn research:
+  {{LINKEDIN_RESEARCH}}
+
+  Public sources (news, funding):
+  {{PUBLIC_RESEARCH}}
+
+  Research summary:
+  {{RESEARCH_SUMMARY}}
+
+  ## Generated content to critique
+
   {{GENERATED_CONTENT}}
 
-  Critique it against the full rubric. List specific lines/fields that fail each principle, not vague feedback.
+  Critique against the full rubric. For the vertical-mismatch and research-grounding checks: read the website positioning above, then compare to what the generated content claims. Quote the offending line from the doc AND quote the conflicting line from the website/LinkedIn signals. If the website says "X" and the doc says "Y", the score must be ≤6 and the feedback must instruct the regenerator to re-anchor on the website's actual words.
 evidence_requirements: []
 output_schema:
   score: "number (1-10)"
