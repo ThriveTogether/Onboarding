@@ -39,6 +39,19 @@ const catalogueUpload = multer({
   limits: { fileSize: 20 * 1024 * 1024 },
 });
 
+// Logos are smaller — 2 MB cap, image MIME types only.
+const logoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(png|jpe?g|svg\+xml|webp|gif)$/i.test(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Logo must be a PNG, JPG, SVG, WebP, or GIF file.'));
+    }
+  },
+});
+
 // --------------------------------------------------------------------------
 // All routes below require a logged-in founder.
 // --------------------------------------------------------------------------
@@ -993,6 +1006,72 @@ Convert to the JSON shape above. Return ONLY the JSON, no markdown.`;
     });
     await doc.save();
     return res.json({ doc, source: { filename: file.originalname, pageCount: parsedFile.pageCount } });
+  }
+);
+
+/**
+ * Save founder's brand colors on the brand_guidelines doc. Either field may
+ * be omitted to clear it. Hex strings (with or without leading #) only.
+ */
+router.patch('/company/:id/docs/brand/colors', async (req: Request, res: Response) => {
+  const { id } = req.params as { id: string };
+  const primary = typeof req.body?.primary === 'string' ? req.body.primary.trim() : undefined;
+  const secondary = typeof req.body?.secondary === 'string' ? req.body.secondary.trim() : undefined;
+  const validHex = (s: string | undefined) => !s || /^#?[0-9a-f]{3,8}$/i.test(s);
+  if (!validHex(primary) || !validHex(secondary)) {
+    return res.status(400).json({ error: 'Colors must be hex codes like #FF6F61 or empty.' });
+  }
+  const doc = await OnboardingDoc.findOne({ companyId: id, kind: 'brand_guidelines' });
+  if (!doc) return res.status(404).json({ error: 'Brand guidelines doc not found.' });
+  const current = (doc.content?.colors || {}) as Record<string, string>;
+  const next = {
+    ...current,
+    ...(primary !== undefined ? { primary: normalizeHex(primary) } : {}),
+    ...(secondary !== undefined ? { secondary: normalizeHex(secondary) } : {}),
+  };
+  doc.content = { ...(doc.content || {}), colors: next };
+  doc.markModified('content');
+  await doc.save();
+  return res.json({ doc });
+});
+
+function normalizeHex(s: string): string {
+  if (!s) return s;
+  return s.startsWith('#') ? s : `#${s}`;
+}
+
+/**
+ * Upload a brand logo. Stored as a base64 data URL on the doc — fine for
+ * the small files we limit to (2 MB cap), no separate blob storage needed.
+ */
+router.post(
+  '/company/:id/docs/brand/logo',
+  logoUpload.single('file'),
+  async (req: Request, res: Response) => {
+    const { id } = req.params as { id: string };
+    const file = (req as any).file as
+      | { buffer: Buffer; originalname: string; mimetype: string; size: number }
+      | undefined;
+    if (!file) return res.status(400).json({ error: 'No file uploaded.' });
+
+    const dataUrl = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+
+    const doc = await OnboardingDoc.findOne({ companyId: id, kind: 'brand_guidelines' });
+    if (!doc) return res.status(404).json({ error: 'Brand guidelines doc not found.' });
+
+    doc.content = {
+      ...(doc.content || {}),
+      logo: {
+        filename: file.originalname,
+        mimeType: file.mimetype,
+        sizeBytes: file.size,
+        dataUrl,
+        uploadedAt: new Date(),
+      },
+    };
+    doc.markModified('content');
+    await doc.save();
+    return res.json({ doc });
   }
 );
 

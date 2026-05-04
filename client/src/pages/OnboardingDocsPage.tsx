@@ -269,6 +269,36 @@ export default function OnboardingDocsPage() {
     }
   };
 
+  // Brand-only: persist primary/secondary colors. Optimistic-merge into
+  // local state so the swatch reflects the new value without a refetch.
+  const handleSaveBrandColors = async (colors: { primary?: string; secondary?: string }) => {
+    if (!id) return;
+    try {
+      const { data } = await onboardingAPI.saveBrandColors(id, colors);
+      if (data.doc) {
+        setDocs((prev) => prev.map((d) => (d._id === data.doc._id ? data.doc : d)));
+      }
+    } catch (e: any) {
+      setError(e.response?.data?.error || 'Could not save colors.');
+    }
+  };
+
+  const handleUploadBrandLogo = async (file: File) => {
+    if (!id) return;
+    setAction('uploading');
+    setError('');
+    try {
+      const { data } = await onboardingAPI.uploadBrandLogo(id, file);
+      if (data.doc) {
+        setDocs((prev) => prev.map((d) => (d._id === data.doc._id ? data.doc : d)));
+      }
+    } catch (e: any) {
+      setError(e.response?.data?.error || 'Could not upload logo.');
+    } finally {
+      setAction('idle');
+    }
+  };
+
   if (loading) return <div className="mp-center"><p className="mp-muted">Loading your strategy docs…</p></div>;
 
   return (
@@ -435,6 +465,12 @@ export default function OnboardingDocsPage() {
                       companyName={(company as any)?.companyName}
                       onRegenerateWithFeedback={handleRegenerate}
                       onUpload={handleDocUpload}
+                      onSaveColors={
+                        activeDoc.kind === 'brand_guidelines' ? handleSaveBrandColors : undefined
+                      }
+                      onUploadLogo={
+                        activeDoc.kind === 'brand_guidelines' ? handleUploadBrandLogo : undefined
+                      }
                       regenerating={action === 'regenerating'}
                       uploading={action === 'uploading'}
                     />

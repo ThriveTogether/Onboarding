@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { Download, MessageSquarePlus, Upload, Check, RefreshCw, FileText, Sparkles } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Download, MessageSquarePlus, Upload, Check, RefreshCw, FileText, Sparkles, Image as ImageIcon, Palette } from 'lucide-react';
 import Button from './Button';
 
 /**
@@ -27,6 +27,10 @@ interface DocDownloadGateProps {
   onRegenerateWithFeedback: (feedback: string) => Promise<void>;
   /** File upload — replaces AI-generated content with founder's source. */
   onUpload: (file: File) => Promise<void>;
+  /** Brand-only: save primary/secondary color hex codes. */
+  onSaveColors?: (colors: { primary?: string; secondary?: string }) => Promise<void>;
+  /** Brand-only: upload a logo image (PNG/JPG/SVG). */
+  onUploadLogo?: (file: File) => Promise<void>;
   regenerating: boolean;
   uploading: boolean;
 }
@@ -36,16 +40,36 @@ export default function DocDownloadGate({
   companyName,
   onRegenerateWithFeedback,
   onUpload,
+  onSaveColors,
+  onUploadLogo,
   regenerating,
   uploading,
 }: DocDownloadGateProps) {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackText, setFeedbackText] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
+  const logoRef = useRef<HTMLInputElement>(null);
 
   const uploaded = doc.content?.sourceUpload as
     | { filename?: string; pageCount?: number; uploadedAt?: string }
     | undefined;
+
+  const isBrand = doc.kind === 'brand_guidelines';
+  const colors = (doc.content?.colors || {}) as { primary?: string; secondary?: string };
+  const logo = doc.content?.logo as { dataUrl?: string; filename?: string } | undefined;
+
+  // Local color state — debounced save so dragging the picker doesn't spam.
+  const [primary, setPrimary] = useState<string>(colors.primary || '');
+  const [secondary, setSecondary] = useState<string>(colors.secondary || '');
+  useEffect(() => {
+    setPrimary(colors.primary || '');
+    setSecondary(colors.secondary || '');
+  }, [colors.primary, colors.secondary]);
+
+  const handleColorCommit = async (which: 'primary' | 'secondary', value: string) => {
+    if (!onSaveColors) return;
+    await onSaveColors({ [which]: value });
+  };
 
   const highlights = extractHighlights(doc);
 
@@ -95,6 +119,91 @@ export default function DocDownloadGate({
             </li>
           ))}
         </ul>
+      )}
+
+      {/* Brand-only assets: color palette + logo. Color values save on
+          commit (onBlur / picker close) so dragging doesn't spam the API. */}
+      {isBrand && onSaveColors && (
+        <div className="mp-doc-gate__assets">
+          <div className="mp-doc-gate__assets-head">
+            <Palette size={14} strokeWidth={2.5} />
+            <span>Brand assets</span>
+          </div>
+          <div className="mp-doc-gate__color-row">
+            <label className="mp-doc-gate__color">
+              <span className="mp-overline">Primary</span>
+              <span className="mp-doc-gate__swatch-row">
+                <input
+                  type="color"
+                  value={primary || '#152b68'}
+                  onChange={(e) => setPrimary(e.target.value)}
+                  onBlur={() => primary !== (colors.primary || '') && handleColorCommit('primary', primary)}
+                  className="mp-doc-gate__swatch"
+                  aria-label="Primary brand color"
+                />
+                <input
+                  type="text"
+                  value={primary}
+                  onChange={(e) => setPrimary(e.target.value)}
+                  onBlur={() => primary !== (colors.primary || '') && handleColorCommit('primary', primary)}
+                  placeholder="#152b68"
+                  className="mp-input mp-doc-gate__hex-input"
+                />
+              </span>
+            </label>
+            <label className="mp-doc-gate__color">
+              <span className="mp-overline">Secondary</span>
+              <span className="mp-doc-gate__swatch-row">
+                <input
+                  type="color"
+                  value={secondary || '#ff6f61'}
+                  onChange={(e) => setSecondary(e.target.value)}
+                  onBlur={() => secondary !== (colors.secondary || '') && handleColorCommit('secondary', secondary)}
+                  className="mp-doc-gate__swatch"
+                  aria-label="Secondary brand color"
+                />
+                <input
+                  type="text"
+                  value={secondary}
+                  onChange={(e) => setSecondary(e.target.value)}
+                  onBlur={() => secondary !== (colors.secondary || '') && handleColorCommit('secondary', secondary)}
+                  placeholder="#ff6f61"
+                  className="mp-input mp-doc-gate__hex-input"
+                />
+              </span>
+            </label>
+          </div>
+
+          <div className="mp-doc-gate__logo-row">
+            <span className="mp-overline">Logo</span>
+            <input
+              ref={logoRef}
+              type="file"
+              accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f && onUploadLogo) onUploadLogo(f);
+                e.target.value = '';
+              }}
+            />
+            {logo?.dataUrl ? (
+              <div className="mp-doc-gate__logo-preview">
+                <img src={logo.dataUrl} alt="Brand logo" />
+                <span className="mp-meta" style={{ flex: 1, marginLeft: 10 }}>
+                  {logo.filename}
+                </span>
+                <Button variant="outline" size="sm" onClick={() => logoRef.current?.click()}>
+                  Replace
+                </Button>
+              </div>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => logoRef.current?.click()}>
+                <ImageIcon size={14} strokeWidth={2.5} /> Upload your logo (PNG/SVG)
+              </Button>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Primary actions */}
@@ -269,7 +378,25 @@ function renderPrintableHTML(doc: DocLike, companyName: string): string {
     const dos = Array.isArray(c.dos) ? c.dos : [];
     const donts = Array.isArray(c.donts) ? c.donts : [];
     const samples = c.samples || {};
+    const colors = c.colors || {};
+    const logo = c.logo || {};
+    const hasAssets = colors.primary || colors.secondary || logo.dataUrl;
     body = `
+      ${
+        hasAssets
+          ? `<h2>Brand assets</h2>
+             <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;margin:8px 0 12px;">
+               ${
+                 logo.dataUrl
+                   ? `<div><div class="overline" style="font-size:11px;color:#5d6a93;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Logo</div>
+                      <img src="${escapeHTML(logo.dataUrl)}" alt="Brand logo" style="max-width:140px;max-height:80px;object-fit:contain;background:#fff;border:1px solid #e2e6f1;border-radius:6px;padding:8px;" /></div>`
+                   : ''
+               }
+               ${colors.primary ? colorSwatchHTML('Primary', colors.primary) : ''}
+               ${colors.secondary ? colorSwatchHTML('Secondary', colors.secondary) : ''}
+             </div>`
+          : ''
+      }
       <h2>Voice</h2>
       ${rowsHTML([
         ['Tone', v.tone],
@@ -346,6 +473,17 @@ ${body}
 </html>`;
 }
 
+function colorSwatchHTML(label: string, hex: string): string {
+  const safeHex = escapeHTML(hex);
+  return `<div>
+    <div style="font-size:11px;color:#5d6a93;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">${escapeHTML(label)}</div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:48px;height:48px;border-radius:8px;background:${safeHex};border:1px solid #e2e6f1;"></div>
+      <code style="font-size:13px;color:#152b68;font-family:ui-monospace,SFMono-Regular,monospace;">${safeHex}</code>
+    </div>
+  </div>`;
+}
+
 function rowsHTML(rows: Array<[string, any]>): string {
   // Print path uses the FULL strings — no truncation. (Highlights use
   // toShortStr to keep the on-screen card compact, but the downloaded
@@ -388,7 +526,10 @@ function rationaleHTML(rationale: string): string {
   }
 
   // Topic markers that often start a new logical section in our prompts.
-  const topicRe = /^(The\s+[A-Z]?\w+|WhatsApp|This|Their|Zentree|Their |The strategy|The escalation|The rep handoff|The handoffTrigger|The cold|The warm|The hot)/;
+  // Brand rationales open paragraphs with DOs/DON'Ts/Sample/Business/Tone/Voice;
+  // nurture rationales tend to use The-X. Cover both.
+  const topicRe =
+    /^(The\s+[A-Z]?\w+|DO[Nn]?'?[Tt]?s?\s|DOs\s|DON'Ts\s|DONT'?s\s|Sample|Business|Tone|Voice|Style|Cadence|Channel|This|Their|Approved|Founder|WhatsApp|Email|LinkedIn|First|Second|Third|Finally|Note|Important)/;
 
   type Para = { sentences: string[] };
   const paragraphs: Para[] = [];
@@ -402,8 +543,10 @@ function rationaleHTML(rationale: string): string {
       current = { sentences: [] };
     }
     current.sentences.push(s);
-    // Cap at 3 sentences per paragraph regardless.
-    if (current.sentences.length >= 3) {
+    // Cap at 2 sentences per paragraph — brand rationales tend to be one
+    // dense thought per sentence, so 3-sentence groups still feel like
+    // walls. 2 sentences gives the founder breathing room between ideas.
+    if (current.sentences.length >= 2) {
       paragraphs.push(current);
       current = { sentences: [] };
     }

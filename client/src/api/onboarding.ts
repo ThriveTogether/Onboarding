@@ -203,6 +203,15 @@ export const onboardingAPI = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+  saveBrandColors: (id: string, colors: { primary?: string; secondary?: string }) =>
+    api.patch(`/onboarding/company/${id}/docs/brand/colors`, colors),
+  uploadBrandLogo: (id: string, file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post(`/onboarding/company/${id}/docs/brand/logo`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
   computeImpact: (id: string, kind: OnboardingDocKind, newContent: any) =>
     api.post(`/onboarding/company/${id}/docs/${kind}/impact`, { newContent }),
   applyDocEdit: (id: string, kind: OnboardingDocKind, newContent: any, applyTo: 'all_leads' | 'new_leads') =>
