@@ -10,7 +10,7 @@ import DocEditor from '../components/DocEditor';
 import DocThinking from '../components/DocThinking';
 import WizardBackLink from '../components/WizardBackLink';
 import BrochureGate from '../components/BrochureGate';
-import SimpleDocBlocks from '../components/SimpleDocBlocks';
+import DocDownloadGate from '../components/DocDownloadGate';
 import { useOnboarding } from '../contexts/OnboardingContext';
 
 // Order matters — the founder walks through these top-to-bottom. Product
@@ -170,7 +170,7 @@ export default function OnboardingDocsPage() {
     }
   };
 
-  const handleRegenerate = async () => {
+  const handleRegenerate = async (feedback?: string) => {
     if (!id || !activeDoc) return;
     setAction('regenerating');
     setError('');
@@ -184,7 +184,7 @@ export default function OnboardingDocsPage() {
     // progresses (the previous interval cleared once no docs were generating).
     setPollNonce((n) => n + 1);
     try {
-      await onboardingAPI.regenerateDoc(id, activeDoc.kind);
+      await onboardingAPI.regenerateDoc(id, activeDoc.kind, feedback ? { feedback } : undefined);
       await loadDocs();
     } catch (e: any) {
       setError(e.response?.data?.error || e.message || 'Regenerate failed');
@@ -243,6 +243,27 @@ export default function OnboardingDocsPage() {
       }
     } catch (e: any) {
       setError(e.response?.data?.error || 'Could not parse the brochure.');
+    } finally {
+      setAction('idle');
+    }
+  };
+
+  // Upload a founder-supplied playbook for nurture or brand. Returned doc
+  // has `content.sourceUpload` populated which DocDownloadGate uses to
+  // switch into "using your uploaded version" mode.
+  const handleDocUpload = async (file: File) => {
+    if (!id || !activeDoc) return;
+    setAction('uploading');
+    setError('');
+    try {
+      const { data } = activeDoc.kind === 'nurture_strategy'
+        ? await onboardingAPI.uploadNurturePlaybook(id, file)
+        : await onboardingAPI.uploadBrandGuide(id, file);
+      if (data.doc) {
+        setDocs((prev) => prev.map((d) => (d._id === data.doc._id ? data.doc : d)));
+      }
+    } catch (e: any) {
+      setError(e.response?.data?.error || 'Could not parse the file.');
     } finally {
       setAction('idle');
     }
@@ -374,7 +395,7 @@ export default function OnboardingDocsPage() {
                       own controls inside BrochureGate; nurture/brand show a
                       simple block summary that the founder can edit if needed. */}
                   <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                    <Button variant="ghost" size="sm" onClick={handleRegenerate} disabled={action !== 'idle'}>
+                    <Button variant="ghost" size="sm" onClick={() => handleRegenerate()} disabled={action !== 'idle'}>
                       <RefreshCw size={14} strokeWidth={2} /> Regenerate
                     </Button>
                   </div>
@@ -406,9 +427,17 @@ export default function OnboardingDocsPage() {
                   ) : editing ? (
                     <DocEditor doc={activeDoc} value={draftContent} onChange={setDraftContent} />
                   ) : (activeDoc.kind === 'nurture_strategy' || activeDoc.kind === 'brand_guidelines') ? (
-                    /* Block summary — the rich DocRenderer is reserved for the
-                       post-launch app pages where the founder reviews details. */
-                    <SimpleDocBlocks doc={activeDoc} />
+                    /* Glance-check + download/feedback/upload card. The full
+                       prose body is rendered to a print-friendly HTML page on
+                       Download — keeps this surface uncluttered. */
+                    <DocDownloadGate
+                      doc={activeDoc as any}
+                      companyName={(company as any)?.companyName}
+                      onRegenerateWithFeedback={handleRegenerate}
+                      onUpload={handleDocUpload}
+                      regenerating={action === 'regenerating'}
+                      uploading={action === 'uploading'}
+                    />
                   ) : (
                     <DocRenderer doc={activeDoc} />
                   )}

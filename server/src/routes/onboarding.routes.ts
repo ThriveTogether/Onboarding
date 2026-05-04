@@ -743,7 +743,15 @@ router.post(
 );
 
 router.post('/company/:id/docs/:kind/regenerate', async (req: Request, res: Response) => {
-  const doc = await generateDoc(req.params.id, req.params.kind as OnboardingDocKind);
+  // Optional founder feedback ("tone is too aggressive, dial back") — flows
+  // into the prompt's FOUNDER_FEEDBACK so the regen actually addresses what
+  // they want changed, not just rolls the dice again.
+  const feedback = typeof req.body?.feedback === 'string' ? req.body.feedback : undefined;
+  const doc = await generateDoc(
+    req.params.id,
+    req.params.kind as OnboardingDocKind,
+    feedback ? { founderFeedbackOverride: feedback } : undefined,
+  );
   return res.json({ doc });
 });
 
@@ -856,6 +864,121 @@ Convert to the JSON shape above. Return ONLY the JSON, no markdown.`;
       messageTemplates: doc.content?.messageTemplates,
     };
     doc.content = { ...parsed, ...previousInjected, sourceUpload: { filename: file.originalname, pageCount: parsedFile.pageCount, uploadedAt: new Date() } };
+    doc.status = 'ready_for_review';
+    doc.currentVersion = (doc.versions?.length || 0) + 1;
+    doc.versions.push({
+      version: doc.currentVersion,
+      content: doc.content,
+      rawMarkdown: '',
+      critiqueScore: null,
+      editedByFounder: true,
+      editDiff: `Populated from upload: ${file.originalname}`,
+      appliedTo: 'initial',
+      createdAt: new Date(),
+    });
+    await doc.save();
+    return res.json({ doc, source: { filename: file.originalname, pageCount: parsedFile.pageCount } });
+  }
+);
+
+/**
+ * Upload an existing brand / voice / style guide and have Claude extract it
+ * into the brand_guidelines JSON shape — replaces the AI-drafted content
+ * with founder's real source material.
+ */
+router.post(
+  '/company/:id/docs/brand/upload',
+  catalogueUpload.single('file'),
+  async (req: Request, res: Response) => {
+    const { id } = req.params as { id: string };
+    const file = (req as any).file as
+      | { buffer: Buffer; originalname: string; mimetype: string; size: number }
+      | undefined;
+    if (!file) return res.status(400).json({ error: 'No file uploaded.' });
+    if (!isAIAvailable()) {
+      return res.status(503).json({ error: 'AI parser is offline — try again in a minute.' });
+    }
+
+    const fmt = detectFormat(file.originalname, file.mimetype);
+    if (fmt === 'unknown') {
+      return res.status(400).json({
+        error: 'Unsupported format. Upload a PDF, DOCX, TXT, or Markdown file.',
+      });
+    }
+
+    let parsedFile;
+    try {
+      parsedFile = await parseCatalogue(file.buffer, file.originalname, file.mimetype);
+    } catch (e: any) {
+      return res.status(400).json({ error: e?.message || 'Could not parse the file.' });
+    }
+
+    const systemPrompt = `You are a B2B brand & voice analyst. The founder uploaded an existing brand/voice/style guide. Convert it to the structured brand_guidelines JSON shape used by our system.
+
+Return ONLY valid JSON with these exact keys:
+{
+  "voice": {
+    "tone": "string (1 short sentence describing tonal qualities)",
+    "languageLevel": "string (e.g. 'plain English' / 'industry-aware' / 'technical')",
+    "firstPersonStyle": "string (we / I / company name?)",
+    "signOffStyle": "string (how outbound emails/messages sign off)"
+  },
+  "dos": ["string", "string", "string", "string"],
+  "donts": ["string", "string", "string", "string"],
+  "businessHours": "string (e.g. '9am-7pm IST')",
+  "samples": {
+    "coldWhatsApp": "string (a short cold message in this voice)",
+    "followupWhatsApp": "string (a short follow-up in this voice)"
+  },
+  "rationale": "string (1-2 sentences explaining how this maps the founder's source)"
+}
+
+If the source doc doesn't cover a field, use a sensible default — but mention what was inferred in the rationale.`;
+
+    const userPrompt = `Founder's uploaded brand/voice guide (parsed text):
+
+"""
+${parsedFile.text.slice(0, 12_000)}
+"""
+
+Convert to the JSON shape above. Return ONLY the JSON, no markdown.`;
+
+    let parsed;
+    try {
+      const result = await callClaude({
+        systemPrompt,
+        userPrompt,
+        model: 'claude-sonnet-4-5',
+        maxTokens: 2500,
+        temperature: 0.2,
+        timeoutMs: 60_000,
+      });
+      parsed = extractJSON(result.content);
+    } catch (e: any) {
+      return res.status(500).json({ error: e?.message || 'Claude parse failed.' });
+    }
+
+    if (!parsed || typeof parsed !== 'object') {
+      return res.status(400).json({
+        error: 'Could not extract a structured brand guide from your file. Try a more voice-focused doc.',
+      });
+    }
+
+    let doc = await OnboardingDoc.findOne({ companyId: id, kind: 'brand_guidelines' });
+    if (!doc) {
+      doc = new OnboardingDoc({
+        companyId: id,
+        kind: 'brand_guidelines',
+        title: 'Brand voice',
+        status: 'ready_for_review',
+        versions: [],
+      });
+    }
+
+    doc.content = {
+      ...parsed,
+      sourceUpload: { filename: file.originalname, pageCount: parsedFile.pageCount, uploadedAt: new Date() },
+    };
     doc.status = 'ready_for_review';
     doc.currentVersion = (doc.versions?.length || 0) + 1;
     doc.versions.push({

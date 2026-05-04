@@ -119,8 +119,8 @@ export const onboardingAPI = {
   listLeads: (id: string) => api.get(`/onboarding/company/${id}/leads`),
   listDocs: (id: string) => api.get(`/onboarding/company/${id}/docs`),
   generateAllDocs: (id: string) => api.post(`/onboarding/company/${id}/docs/generate-all`),
-  regenerateDoc: (id: string, kind: OnboardingDocKind) =>
-    api.post(`/onboarding/company/${id}/docs/${kind}/regenerate`),
+  regenerateDoc: (id: string, kind: OnboardingDocKind, opts?: { feedback?: string }) =>
+    api.post(`/onboarding/company/${id}/docs/${kind}/regenerate`, opts || {}),
   approveDoc: (id: string, kind: OnboardingDocKind, opts?: { edited?: boolean; newContent?: any }) =>
     api.post(`/onboarding/company/${id}/docs/${kind}/approve`, opts || {}),
   skipDoc: (id: string, kind: OnboardingDocKind) =>
@@ -193,6 +193,13 @@ export const onboardingAPI = {
     const fd = new FormData();
     fd.append('file', file);
     return api.post(`/onboarding/company/${id}/docs/nurture/upload`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  uploadBrandGuide: (id: string, file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post(`/onboarding/company/${id}/docs/brand/upload`, fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },

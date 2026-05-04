@@ -43,9 +43,19 @@ function markdownForDoc(kind: OnboardingDocKind, parsed: any, companyName: strin
   }
 }
 
+export interface GenerateDocOptions {
+  /**
+   * Free-form feedback from the founder telling the regen what to fix
+   * ("tone is too aggressive", "drop the WhatsApp channel"). Prepended to
+   * the lead-derived FOUNDER_FEEDBACK so the LLM sees both signals.
+   */
+  founderFeedbackOverride?: string;
+}
+
 export async function generateDoc(
   companyId: mongoose.Types.ObjectId | string,
-  kind: OnboardingDocKind
+  kind: OnboardingDocKind,
+  opts?: GenerateDocOptions
 ): Promise<IOnboardingDoc> {
   const company = await OnboardingCompany.findById(companyId);
   if (!company) throw new Error('Company not found');
@@ -106,7 +116,10 @@ export async function generateDoc(
   });
   const sessionId = session._id.toString();
 
-  const founderFeedback = await summariseFounderFeedback(company._id, company.icpFeedbackNote);
+  const leadFeedback = await summariseFounderFeedback(company._id, company.icpFeedbackNote);
+  const founderFeedback = opts?.founderFeedbackOverride
+    ? `Founder's explicit feedback on this doc:\n${opts.founderFeedbackOverride.trim()}\n\nPrior lead-level feedback:\n${leadFeedback || '(none)'}`
+    : leadFeedback;
 
   const context = {
     COMPANY_NAME: company.companyName,
