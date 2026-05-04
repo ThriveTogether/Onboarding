@@ -78,10 +78,37 @@ export async function runAgentCritiqueLoop(input: GenerateInput): Promise<Genera
         const parsedCrit = extractJSON(crit.content);
         if (parsedCrit && typeof parsedCrit.score === 'number') {
           score = parsedCrit.score;
+
+          // Programmatic enforcement of the critic's own mandatory-fail
+          // rubric. The LLM frequently reports vertical_match=false or
+          // no_saas_canonical_drift=false but still scores 7-8 (above
+          // threshold), and the bad output ships. Clamping here makes the
+          // rubric non-negotiable: if any mandatory check failed, the
+          // doc cannot pass — full stop.
+          const ev = parsedCrit.evidence_check || {};
+          const mandatoryFails: string[] = [];
+          if (ev.vertical_match === false) mandatoryFails.push('vertical_match');
+          if (ev.no_saas_canonical_drift === false) mandatoryFails.push('no_saas_canonical_drift');
+          if (typeof ev.research_grounding_count === 'number' && ev.research_grounding_count <= 1) {
+            mandatoryFails.push(`research_grounding_count=${ev.research_grounding_count}`);
+          }
+          if (ev.no_filler_phrases === false) mandatoryFails.push('no_filler_phrases');
+
+          if (mandatoryFails.length > 0 && score > 6) {
+            console.warn(
+              `[orchestrator] clamping score ${score}→6 (mandatory fails: ${mandatoryFails.join(', ')})`
+            );
+            score = 6;
+          }
+
           previousFeedback =
             score >= threshold
               ? ''
-              : `Previous attempt scored ${score}/10. Feedback: ${parsedCrit.feedback || ''}`;
+              : `Previous attempt scored ${score}/10. ${
+                  mandatoryFails.length
+                    ? `Mandatory checks failed: ${mandatoryFails.join(', ')}. `
+                    : ''
+                }Feedback: ${parsedCrit.feedback || ''}`;
         }
       } catch (err) {
         console.warn('[orchestrator] critique failed, keeping generator output', err);
