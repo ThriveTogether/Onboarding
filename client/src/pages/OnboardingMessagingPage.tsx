@@ -14,9 +14,9 @@ type Tone = 'direct' | 'balanced' | 'empathetic';
 type Formality = 'casual' | 'professional' | 'formal';
 
 const STAGES: { key: Stage; label: string; sub: string; icon: any; color: string }[] = [
-  { key: 'cold', label: 'Cold outreach', sub: 'First touch', icon: Snowflake, color: 'var(--mp-chart-2)' },
-  { key: 'warming', label: 'Warm follow-up', sub: 'They\'ve engaged', icon: Zap, color: 'var(--mp-chart-4)' },
-  { key: 'hot', label: 'Hot / your turn', sub: 'Ready for you', icon: Flame, color: 'var(--mp-coral)' },
+  { key: 'cold', label: 'Cold', sub: 'Your first message', icon: Snowflake, color: 'var(--mp-chart-2)' },
+  { key: 'warming', label: 'Warming', sub: 'After they engage', icon: Zap, color: 'var(--mp-chart-4)' },
+  { key: 'hot', label: 'Hot', sub: 'Ask for the meeting', icon: Flame, color: 'var(--mp-coral)' },
 ];
 
 const CHANNELS: { key: Channel; label: string; icon: any }[] = [
